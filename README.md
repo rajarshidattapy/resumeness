@@ -5,6 +5,9 @@ An intelligent resume builder that uses LangChain and OpenRouter AI models to ta
 ## Features
 - Paste a JD, set proper knowledge base about your achievements,qualifications,projects etc. and see the AI doing the magic!
 
+## To-do:
+- add a LLM that can do tool call
+- add vercel vector db for easy deployment
 
 ## Tech Stack
 
