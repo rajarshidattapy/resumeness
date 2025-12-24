@@ -1,6 +1,8 @@
 // Resume AI Agent - Multi-step workflow for resume tailoring
-import { createChatCompletion, streamChatCompletion, ModelId } from './openrouter';
+// Now powered by LangChain for more agentic behavior
+import { createResumeAgent, ResumeAgent } from './resume-agent-langchain';
 import { KnowledgeItem } from '@/stores/useResumeStore';
+import { OpenRouterModelId } from './langchain-openrouter';
 
 const SYSTEM_PROMPT = `You are an expert resume engineer AI agent. Your job is to help tailor resumes to match job descriptions for maximum ATS (Applicant Tracking System) compatibility.
 
@@ -28,6 +30,7 @@ export interface AgentContext {
   jobDescription: string;
   currentLatex: string;
   knowledgeBase: KnowledgeItem[];
+  agent?: ResumeAgent;
 }
 
 export interface AgentStep {
@@ -98,120 +101,44 @@ export function calculateATSScore(resume: string, jd: string): { score: number; 
   return { score, matched, missing };
 }
 
-// Analyze job description
+// Analyze job description using LangChain agent
 export async function analyzeJobDescription(
   jd: string,
-  model: ModelId = 'mistral-7b'
+  context?: AgentContext,
+  model: OpenRouterModelId = 'mistral-7b'
 ): Promise<string> {
-  const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
-    {
-      role: 'user' as const,
-      content: `Analyze this job description and extract:
-1. Key Requirements (must-haves)
-2. Nice-to-haves
-3. Important Keywords for ATS
-4. Company Culture Indicators
-5. Recommended Resume Focus Areas
-
-Job Description:
-${jd}
-
-Provide a structured analysis.`,
-    },
-  ];
-
-  return createChatCompletion(messages, { model });
+  const agent = context?.agent || createResumeAgent(model, context?.knowledgeBase || []);
+  return agent.analyzeJobDescription(jd);
 }
 
-// Rewrite resume LaTeX
+// Rewrite resume LaTeX using LangChain agent
 export async function rewriteResume(
   context: AgentContext,
   instructions: string,
-  model: ModelId = 'mistral-7b'
+  model: OpenRouterModelId = 'mistral-7b'
 ): Promise<string> {
-  const relevantKB = searchKnowledgeBase(context.jobDescription, context.knowledgeBase, 3);
-  
-  const kbContext = relevantKB.length > 0
-    ? `\n\nRelevant experience from knowledge base that can be incorporated:\n${relevantKB.map(item => 
-        `- ${item.title} (${item.type}): ${item.content}`
-      ).join('\n')}`
-    : '';
-
-  const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
-    {
-      role: 'user' as const,
-      content: `Job Description:
-${context.jobDescription}
-
-Current Resume LaTeX:
-${context.currentLatex}
-${kbContext}
-
-Instructions: ${instructions}
-
-IMPORTANT: Output ONLY the modified LaTeX code. No explanations, no markdown, no comments. Just pure LaTeX that compiles.`,
-    },
-  ];
-
-  return createChatCompletion(messages, { model, maxTokens: 4096 });
+  const agent = context.agent || createResumeAgent(model, context.knowledgeBase, context.currentLatex, context.jobDescription);
+  return agent.rewriteResume(instructions);
 }
 
-// Stream rewrite for better UX
+// Stream rewrite for better UX using LangChain
 export async function* streamRewriteResume(
   context: AgentContext,
   instructions: string,
-  model: ModelId = 'mistral-7b'
+  model: OpenRouterModelId = 'mistral-7b'
 ): AsyncGenerator<string, void, unknown> {
-  const relevantKB = searchKnowledgeBase(context.jobDescription, context.knowledgeBase, 3);
-  
-  const kbContext = relevantKB.length > 0
-    ? `\n\nRelevant experience from knowledge base that can be incorporated:\n${relevantKB.map(item => 
-        `- ${item.title} (${item.type}): ${item.content}`
-      ).join('\n')}`
-    : '';
-
-  const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
-    {
-      role: 'user' as const,
-      content: `Job Description:
-${context.jobDescription}
-
-Current Resume LaTeX:
-${context.currentLatex}
-${kbContext}
-
-Instructions: ${instructions}
-
-IMPORTANT: Output ONLY the modified LaTeX code. No explanations, no markdown, no comments. Just pure LaTeX that compiles.`,
-    },
-  ];
-
-  yield* streamChatCompletion(messages, { model, maxTokens: 4096 });
+  // For now, just yield the result (streaming can be enhanced later)
+  const result = await rewriteResume(context, instructions, model);
+  yield result;
 }
 
-// Chat with the resume agent
+// Chat with the resume agent using LangChain
 export async function chatWithAgent(
   userMessage: string,
   context: AgentContext,
   conversationHistory: { role: 'user' | 'assistant'; content: string }[],
-  model: ModelId = 'mistral-7b'
+  model: OpenRouterModelId = 'mistral-7b'
 ): Promise<string> {
-  const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
-    ...conversationHistory.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    {
-      role: 'user' as const,
-      content: `Context:
-- Job Description: ${context.jobDescription ? 'Provided' : 'Not provided yet'}
-- Current Resume: Available
-- Knowledge Base Items: ${context.knowledgeBase.length}
-
-User Message: ${userMessage}`,
-    },
-  ];
-
-  return createChatCompletion(messages, { model });
+  const agent = context.agent || createResumeAgent(model, context.knowledgeBase, context.currentLatex, context.jobDescription);
+  return agent.chat(userMessage);
 }

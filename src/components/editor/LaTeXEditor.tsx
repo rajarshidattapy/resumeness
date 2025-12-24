@@ -7,6 +7,7 @@ import { useResumeStore } from '@/stores/useResumeStore';
 import { compileLatexToPdf, downloadPdf } from '@/lib/latexCompiler';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import Latex from 'react-latex-next';
 
 
 export const LaTeXEditor = () => {
@@ -153,7 +154,7 @@ export const LaTeXEditor = () => {
             />
           </motion.div>
         ) : (
-          <ResumePreview latex={latexContent} />
+          <ResumePreview key={latexContent} latex={latexContent} />
         )}
       </div>
     </div>
@@ -162,70 +163,21 @@ export const LaTeXEditor = () => {
 
 // Styled resume preview component
 const ResumePreview = ({ latex }: { latex: string }) => {
-  // Parse LaTeX content into structured data for preview
-  const parseLatexContent = (tex: string) => {
-    const sections: { title: string; content: string }[] = [];
-    
-    // Extract name
-    const nameMatch = tex.match(/\\LARGE\s*\\textbf\{([^}]+)\}/);
-    const name = nameMatch ? nameMatch[1] : 'Your Name';
-    
-    // Extract contact info
-    const emailMatch = tex.match(/\\faEnvelope\\\s*([^\s\\]+)/);
-    const phoneMatch = tex.match(/\\faPhone\\\s*([^\s\\]+)/);
-    
-    // Extract sections
-    const sectionMatches = tex.matchAll(/\\section\*\{([^}]+)\}([\s\S]*?)(?=\\section\*|\\end\{document\})/g);
-    
-    for (const match of sectionMatches) {
-      sections.push({
-        title: match[1],
-        content: match[2].trim()
-      });
-    }
-    
-    return { name, email: emailMatch?.[1], phone: phoneMatch?.[1], sections };
-  };
-
-  const parsed = parseLatexContent(latex);
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="h-full overflow-auto bg-secondary/30 p-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="h-full bg-gray-50 dark:bg-gray-900 p-6 overflow-auto"
     >
-      <div className="max-w-[8.5in] mx-auto bg-card border border-border rounded-lg shadow-lg p-8 min-h-[11in]">
-        {/* Header */}
-        <div className="text-center mb-6 pb-4 border-b border-border/50">
-          <h1 className="text-2xl font-bold text-foreground mb-2">{parsed.name}</h1>
-          <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
-            {parsed.email && <span>✉ {parsed.email}</span>}
-            {parsed.phone && <span>☎ {parsed.phone}</span>}
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-8">
+          <h3 className="text-lg font-semibold mb-6 text-gray-900 dark:text-gray-100 text-center">
+            Resume Preview
+          </h3>
+          <div className="prose prose-sm max-w-none dark:prose-invert">
+            <Latex>{latex}</Latex>
           </div>
         </div>
-
-        {/* Sections */}
-        {parsed.sections.map((section, idx) => (
-          <div key={idx} className="mb-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-primary mb-3 pb-1 border-b border-primary/30">
-              {section.title}
-            </h2>
-            <div className="text-sm text-foreground/80 leading-relaxed font-mono whitespace-pre-wrap">
-              {section.content
-                .replace(/\\textbf\{([^}]+)\}/g, '**$1**')
-                .replace(/\\textit\{([^}]+)\}/g, '_$1_')
-                .replace(/\\item\s*/g, '• ')
-                .replace(/\\begin\{itemize\}.*?\n/g, '')
-                .replace(/\\end\{itemize\}/g, '')
-                .replace(/\[.*?\]/g, '')
-                .replace(/\\hfill/g, '  |  ')
-                .replace(/\\\\/g, '\n')
-                .replace(/\\%/g, '%')
-                .trim()}
-            </div>
-          </div>
-        ))}
       </div>
     </motion.div>
   );
