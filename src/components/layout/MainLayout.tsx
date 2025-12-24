@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Sidebar } from './Sidebar';
+import { GripVertical } from 'lucide-react';
 
 interface MainLayoutProps {
   chatPanel: ReactNode;
@@ -13,32 +14,35 @@ export const MainLayout = ({ chatPanel, editorPanel }: MainLayoutProps) => {
       {/* Sidebar */}
       <Sidebar />
 
-      {/* Main Content - Split View */}
+      {/* Main Content - Resizable Split View */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Chat Panel */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="w-[420px] min-w-[380px] border-r border-border/50 flex flex-col"
-        >
-          {chatPanel}
-        </motion.div>
+        <PanelGroup direction="horizontal">
+          {/* Chat Panel */}
+          <Panel defaultSize={30} minSize={20} maxSize={50} className="flex flex-col">
+            <div className="h-full w-full border-r border-border/50">
+              {chatPanel}
+            </div>
+          </Panel>
 
-        {/* Editor Panel */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex-1 flex flex-col overflow-hidden"
-        >
-          {editorPanel}
-        </motion.div>
+          {/* Resize Handle */}
+          <PanelResizeHandle className="w-1.5 bg-border/20 hover:bg-primary/20 transition-colors flex items-center justify-center cursor-col-resize group z-50">
+            <div className="h-8 w-1 rounded-full bg-border group-hover:bg-primary transition-colors flex items-center justify-center">
+              <GripVertical className="h-4 w-4 text-muted-foreground group-hover:text-primary-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          </PanelResizeHandle>
+
+          {/* Editor Panel */}
+          <Panel defaultSize={70} minSize={30}>
+            <div className="h-full w-full flex flex-col overflow-hidden">
+              {editorPanel}
+            </div>
+          </Panel>
+        </PanelGroup>
       </div>
 
       {/* Background Glow Effect */}
-      <div 
-        className="fixed inset-0 pointer-events-none"
+      <div
+        className="fixed inset-0 pointer-events-none -z-10"
         style={{
           background: 'radial-gradient(ellipse at 20% 20%, hsl(187 92% 50% / 0.03) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, hsl(187 92% 50% / 0.02) 0%, transparent 50%)',
         }}
