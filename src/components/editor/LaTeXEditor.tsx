@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { motion } from 'framer-motion';
 import { Code, Eye, Download, RotateCcw, Maximize2, Loader2, FileDown } from 'lucide-react';
@@ -7,7 +7,6 @@ import { useResumeStore } from '@/stores/useResumeStore';
 import { compileLatexToPdf, downloadPdf } from '@/lib/latexCompiler';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import Latex from 'react-latex-next';
 
 
 export const LaTeXEditor = () => {
@@ -44,7 +43,7 @@ export const LaTeXEditor = () => {
     setIsCompiling(true);
     try {
       const result = await compileLatexToPdf(latexContent);
-      
+
       if (result.success && result.pdfBlob) {
         downloadPdf(result.pdfBlob, 'resume.pdf');
         toast({
@@ -79,8 +78,8 @@ export const LaTeXEditor = () => {
               onClick={() => setActivePanel('editor')}
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                activePanel === 'editor' 
-                  ? "bg-primary text-primary-foreground shadow-sm" 
+                activePanel === 'editor'
+                  ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -91,8 +90,8 @@ export const LaTeXEditor = () => {
               onClick={() => setActivePanel('preview')}
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                activePanel === 'preview' 
-                  ? "bg-primary text-primary-foreground shadow-sm" 
+                activePanel === 'preview'
+                  ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -109,10 +108,10 @@ export const LaTeXEditor = () => {
           <Button variant="ghost" size="iconSm" onClick={handleDownloadTex} title="Download .tex">
             <Download className="w-4 h-4" />
           </Button>
-          <Button 
-            variant="default" 
-            size="sm" 
-            onClick={handleDownloadPdf} 
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleDownloadPdf}
             disabled={isCompiling}
             title="Download PDF"
             className="bg-primary hover:bg-primary/90"
@@ -161,24 +160,91 @@ export const LaTeXEditor = () => {
   );
 };
 
-// Styled resume preview component
+// PDF preview component
 const ResumePreview = ({ latex }: { latex: string }) => {
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  // Compile LaTeX to PDF
+  const compileToPdf = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await compileLatexToPdf(latex);
+
+      if (result.success && result.pdfUrl) {
+        // Revoke previous URL to avoid memory leaks
+        if (pdfUrl) {
+          URL.revokeObjectURL(pdfUrl);
+        }
+        setPdfUrl(result.pdfUrl);
+      } else {
+        setError(result.error || 'Failed to compile LaTeX');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Compilation error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [latex, pdfUrl]);
+
+  // Compile on mount and when latex changes
+  useEffect(() => {
+    compileToPdf();
+  }, [latex]);
+
+  // Cleanup PDF URL on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) {
+        URL.revokeObjectURL(pdfUrl);
+      }
+    };
+  }, [pdfUrl]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="h-full bg-gray-50 dark:bg-gray-900 p-6 overflow-auto"
+      className="h-full bg-gray-50 dark:bg-gray-900 overflow-hidden"
     >
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border p-8">
-          <h3 className="text-lg font-semibold mb-6 text-gray-900 dark:text-gray-100 text-center">
-            Resume Preview
-          </h3>
-          <div className="prose prose-sm max-w-none dark:prose-invert">
-            <Latex>{latex}</Latex>
+      {isLoading ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-sm text-muted-foreground">Compiling LaTeX to PDF...</p>
           </div>
         </div>
-      </div>
+      ) : error ? (
+        <div className="flex items-center justify-center h-full p-6">
+          <div className="bg-destructive/10 border border-destructive rounded-lg p-6 max-w-2xl">
+            <h3 className="text-lg font-semibold mb-2 text-destructive">Compilation Error</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              There was an error compiling your LaTeX document:
+            </p>
+            <pre className="text-xs bg-black/5 dark:bg-white/5 p-4 rounded overflow-auto max-h-60">
+              {error}
+            </pre>
+            <Button
+              onClick={compileToPdf}
+              className="mt-4"
+              variant="outline"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </div>
+        </div>
+      ) : pdfUrl ? (
+        <iframe
+          src={pdfUrl}
+          className="w-full h-full border-0"
+          title="Resume Preview"
+        />
+      ) : null}
     </motion.div>
   );
 };
