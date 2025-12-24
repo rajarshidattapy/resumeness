@@ -1,0 +1,220 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@layer base {
+  :root {
+    /* Resumeness Light Theme - Clean White & Green */
+    --background: 0 0% 100%;
+    --foreground: 150 10% 15%;
+
+    --card: 0 0% 99%;
+    --card-foreground: 150 10% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 150 10% 15%;
+
+    /* Green accent for professional feel */
+    --primary: 152 60% 40%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 150 20% 96%;
+    --secondary-foreground: 150 10% 20%;
+
+    --muted: 150 10% 96%;
+    --muted-foreground: 150 5% 45%;
+
+    --accent: 152 55% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 150 10% 15%;
+
+    --border: 150 15% 90%;
+    --input: 150 15% 95%;
+    --ring: 152 60% 40%;
+
+    --radius: 0.75rem;
+
+    /* Custom Resumeness tokens */
+    --editor-bg: 150 10% 98%;
+    --editor-line: 150 10% 94%;
+    --editor-selection: 152 40% 90%;
+    --chat-user: 152 60% 40%;
+    --chat-ai: 150 15% 97%;
+    --highlight-add: 152 60% 92%;
+    --highlight-remove: 0 84% 94%;
+    --highlight-modify: 38 92% 92%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(152 60% 40%) 0%, hsl(160 55% 35%) 100%);
+    --gradient-light: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(150 20% 98%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(152 60% 40% / 0.1) 0%, transparent 70%);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px hsl(150 10% 50% / 0.05);
+    --shadow-md: 0 4px 12px hsl(150 10% 50% / 0.08);
+    --shadow-lg: 0 10px 40px hsl(150 10% 50% / 0.1);
+    --shadow-glow: 0 0 30px hsl(152 60% 40% / 0.15);
+
+    --sidebar-background: 150 15% 98%;
+    --sidebar-foreground: 150 10% 15%;
+    --sidebar-primary: 152 60% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 150 20% 94%;
+    --sidebar-accent-foreground: 150 10% 20%;
+    --sidebar-border: 150 15% 90%;
+    --sidebar-ring: 152 60% 40%;
+  }
+
+  .dark {
+    --background: 150 15% 6%;
+    --foreground: 150 10% 98%;
+    --card: 150 15% 8%;
+    --card-foreground: 150 10% 98%;
+    --popover: 150 15% 8%;
+    --popover-foreground: 150 10% 98%;
+    --primary: 152 60% 50%;
+    --primary-foreground: 150 15% 6%;
+    --secondary: 150 20% 14%;
+    --secondary-foreground: 150 10% 98%;
+    --muted: 150 15% 12%;
+    --muted-foreground: 150 10% 55%;
+    --accent: 152 55% 45%;
+    --accent-foreground: 150 15% 6%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 150 10% 98%;
+    --border: 150 15% 18%;
+    --input: 150 15% 14%;
+    --ring: 152 60% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+
+  /* Code/Mono text */
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .glow-text {
+    text-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  /* Glass effect */
+  .glass {
+    background: hsl(var(--card) / 0.9);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* Editor highlights */
+  .highlight-added {
+    background: hsl(var(--highlight-add));
+    border-left: 2px solid hsl(var(--success));
+  }
+
+  .highlight-removed {
+    background: hsl(var(--highlight-remove));
+    border-left: 2px solid hsl(var(--destructive));
+  }
+
+  .highlight-modified {
+    background: hsl(var(--highlight-modify));
+    border-left: 2px solid hsl(var(--warning));
+  }
+
+  /* Chat animations */
+  .typing-indicator span {
+    animation: typing 1.4s infinite ease-in-out;
+  }
+
+  .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+  .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typing {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* Pulse ring animation */
+  .pulse-ring {
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+}
+
+@layer utilities {
+  /* Text gradient */
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Border gradient */
+  .border-gradient {
+    border: 1px solid transparent;
+    background: linear-gradient(hsl(var(--card)), hsl(var(--card))) padding-box,
+                var(--gradient-primary) border-box;
+  }
+
+  /* ATS score colors */
+  .ats-excellent { color: hsl(var(--success)); }
+  .ats-good { color: hsl(152 60% 50%); }
+  .ats-fair { color: hsl(var(--warning)); }
+  .ats-poor { color: hsl(var(--destructive)); }
+}
