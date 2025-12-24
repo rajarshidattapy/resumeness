@@ -6,10 +6,8 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 // Free models available on OpenRouter
 export const FREE_MODELS = {
-  'mistral-7b': 'mistralai/mistral-7b-instruct:free',
-  'gemma-7b': 'google/gemma-7b-it:free',
-  'llama-3-8b': 'meta-llama/llama-3-8b-instruct:free',
-  'phi-3-mini': 'microsoft/phi-3-mini-128k-instruct:free',
+  'nvidia': 'nvidia/nemotron-nano-12b-v2-vl:free',
+  'llama-3-8b': 'meta-llama/llama-3-8b-instruct:free'
 } as const;
 
 export type ModelId = keyof typeof FREE_MODELS;
@@ -31,7 +29,7 @@ export async function createChatCompletion(
   options: ChatCompletionOptions = {}
 ): Promise<string> {
   const {
-    model = 'mistral-7b',
+    model = 'llama-3-8b',
     temperature = 0.7,
     maxTokens = 2048,
   } = options;
@@ -70,7 +68,7 @@ export async function* streamChatCompletion(
   options: ChatCompletionOptions = {}
 ): AsyncGenerator<string, void, unknown> {
   const {
-    model = 'mistral-7b',
+    model = 'llama-3-8b',
     temperature = 0.7,
     maxTokens = 2048,
   } = options;

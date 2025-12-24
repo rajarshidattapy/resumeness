@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { BaseMessage, HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
+import { BaseMessage } from "@langchain/core/messages";
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import { ChatResult } from "@langchain/core/outputs";
 
@@ -64,20 +64,8 @@ export class ChatOpenRouter extends BaseChatModel {
     options?: this["ParsedCallOptions"],
     runManager?: CallbackManagerForLLMRun
   ): Promise<ChatResult> {
-    // Convert LangChain messages to OpenAI format
-    const openaiMessages = messages.map(msg => {
-      if (msg instanceof HumanMessage) {
-        return { role: 'user' as const, content: msg.content };
-      } else if (msg instanceof AIMessage) {
-        return { role: 'assistant' as const, content: msg.content };
-      } else if (msg instanceof SystemMessage) {
-        return { role: 'system' as const, content: msg.content };
-      }
-      return { role: 'user' as const, content: msg.content };
-    });
-
-    const result = await this.client.call(openaiMessages, options, runManager);
-    return result;
+    // Delegate to the underlying ChatOpenAI client
+    return this.client._generate(messages, options, runManager);
   }
 
   async *_streamResponseChunks(
@@ -85,20 +73,19 @@ export class ChatOpenRouter extends BaseChatModel {
     options?: this["ParsedCallOptions"],
     runManager?: CallbackManagerForLLMRun
   ): AsyncGenerator<any> {
-    // Convert LangChain messages to OpenAI format
-    const openaiMessages = messages.map(msg => {
-      if (msg instanceof HumanMessage) {
-        return { role: 'user' as const, content: msg.content };
-      } else if (msg instanceof AIMessage) {
-        return { role: 'assistant' as const, content: msg.content };
-      } else if (msg instanceof SystemMessage) {
-        return { role: 'system' as const, content: msg.content };
-      }
-      return { role: 'user' as const, content: msg.content };
-    });
-
-    for await (const chunk of this.client.stream(openaiMessages, options, runManager)) {
+    // Delegate streaming to the underlying ChatOpenAI client
+    for await (const chunk of this.client._streamResponseChunks(messages, options, runManager)) {
       yield chunk;
     }
+  }
+
+  // Required for tool calling agents
+  bind(kwargs: any) {
+    return this.client.bind(kwargs);
+  }
+
+  bindTools(tools: any[], kwargs?: any) {
+    // Delegate tool binding to the underlying ChatOpenAI client
+    return this.client.bindTools(tools, kwargs);
   }
 }

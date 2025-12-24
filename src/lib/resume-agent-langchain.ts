@@ -1,7 +1,7 @@
 import { LatexResumeParser, extractTextFromLatex, isValidLatex } from './latex-parser';
 import { ChatOpenRouter, OpenRouterModelId } from './langchain-openrouter';
 import { Tool } from "@langchain/core/tools";
-import { AgentExecutor, createOpenAIFunctionsAgent } from "langchain/agents";
+import { AgentExecutor, createToolCallingAgent } from "langchain/agents";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
 import { KnowledgeItem } from '@/stores/useResumeStore';
 
@@ -342,7 +342,7 @@ Always use the appropriate tools to provide comprehensive resume optimization. W
       new MessagesPlaceholder("agent_scratchpad"),
     ]);
 
-    const agent = await createOpenAIFunctionsAgent({
+    const agent = await createToolCallingAgent({
       llm: this.llm,
       tools,
       prompt,
@@ -365,6 +365,16 @@ Always use the appropriate tools to provide comprehensive resume optimization. W
 
   async chat(message: string): Promise<string> {
     try {
+      // Ensure agent is initialized
+
+      if (!this.agentExecutor) {
+
+        await this.initializeAgent();
+
+      }
+
+      
+
       const result = await this.agentExecutor.call({
         input: message,
       });
