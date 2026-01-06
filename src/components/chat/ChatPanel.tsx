@@ -13,7 +13,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
 const TypingIndicator = () => (
   <div className="flex items-center gap-1.5 px-4 py-3">
@@ -122,8 +122,8 @@ export const ChatPanel = () => {
     const lowerMessage = userMessage.toLowerCase();
     
     try {
-      // Check if OpenRouter API key is available
-      if (!OPENROUTER_API_KEY) {
+      // Check if OpenAI API key is available
+      if (!OPENAI_API_KEY) {
         // Fallback to simulated responses
         await simulateAgentResponse(userMessage);
         return;
@@ -244,11 +244,11 @@ export const ChatPanel = () => {
       setAtsScore(atsResult.score);
       setMatchedKeywords(atsResult.matched);
       
-      response = `I've analyzed the job description.\n\n**Key Requirements Detected:**\n• Software engineering experience\n• React/TypeScript proficiency\n• Cloud platform experience (AWS/GCP)\n• Team collaboration skills\n\n**Current ATS Match: ${atsResult.score}%**\n\nMatched: ${atsResult.matched.join(', ')}\n\nSay "proceed" to let me rewrite your resume, or add your OpenRouter API key for full AI capabilities.`;
+      response = `I've analyzed the job description.\n\n**Key Requirements Detected:**\n• Software engineering experience\n• React/TypeScript proficiency\n• Cloud platform experience (AWS/GCP)\n• Team collaboration skills\n\n**Current ATS Match: ${atsResult.score}%**\n\nMatched: ${atsResult.matched.join(', ')}\n\nSay "proceed" to let me rewrite your resume, or add your OpenAI API key for full AI capabilities.`;
     } else if (lowerMessage.includes('proceed') || lowerMessage.includes('rewrite')) {
-      response = 'To enable AI-powered resume rewriting, please add your OpenRouter API key. For now, you can manually edit the LaTeX in the editor using the analysis I provided.';
+      response = 'To enable AI-powered resume rewriting, please add your OpenAI API key. For now, you can manually edit the LaTeX in the editor using the analysis I provided.';
     } else {
-      response = `I understand you want to optimize your resume. Here's what I can do:\n\n1. **Paste a job description** - I'll extract key requirements\n2. **Say "search KB"** - I'll find relevant experience\n3. **Say "proceed"** - I'll modify your LaTeX (requires API key)\n\nFor full AI capabilities, add your OpenRouter API key in the environment variables.`;
+      response = `I understand you want to optimize your resume. Here's what I can do:\n\n1. **Paste a job description** - I'll extract key requirements\n2. **Say "search KB"** - I'll find relevant experience\n3. **Say "proceed"** - I'll modify your LaTeX (requires API key)\n\nFor full AI capabilities, add your OpenAI API key in the environment variables.`;
     }
     
     addMessage({ role: 'assistant', content: response });
@@ -303,7 +303,7 @@ export const ChatPanel = () => {
         <div>
           <h2 className="font-semibold text-foreground">Resume Agent</h2>
           <p className="text-xs text-muted-foreground">
-            {OPENROUTER_API_KEY ? 'AI-powered' : 'Demo mode'} • Paste JD to start
+            {OPENAI_API_KEY ? 'AI-powered' : 'Demo mode'} • Paste JD to start
           </p>
         </div>
       </div>

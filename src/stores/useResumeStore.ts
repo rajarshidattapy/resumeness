@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import {
+  getAllKnowledgeItems,
+  createKnowledgeItem as createKBItem,
+  updateKnowledgeItem as updateKBItem,
+  deleteKnowledgeItem as deleteKBItem,
+} from '@/lib/db/knowledgeBaseDb';
 
 export interface Message {
   id: string;
@@ -49,9 +55,12 @@ interface ResumeState {
   
   // Knowledge base
   knowledgeBase: KnowledgeItem[];
-  addKnowledgeItem: (item: Omit<KnowledgeItem, 'id'>) => void;
-  updateKnowledgeItem: (id: string, item: Partial<Omit<KnowledgeItem, 'id'>>) => void;
-  removeKnowledgeItem: (id: string) => void;
+  knowledgeBaseLoading: boolean;
+  knowledgeBaseError: string | null;
+  loadKnowledgeBase: () => Promise<void>;
+  addKnowledgeItem: (item: Omit<KnowledgeItem, 'id'>) => Promise<void>;
+  updateKnowledgeItem: (id: string, item: Partial<Omit<KnowledgeItem, 'id'>>) => Promise<void>;
+  removeKnowledgeItem: (id: string) => Promise<void>;
   
   // UI state
   isAgentThinking: boolean;
@@ -186,18 +195,114 @@ export const useResumeStore = create<ResumeState>()(
         versions: state.versions.filter(v => v.id !== id)
       })),
       
-      knowledgeBase: DEFAULT_KNOWLEDGE,
-      addKnowledgeItem: (item) => set((state) => ({
-        knowledgeBase: [...state.knowledgeBase, { ...item, id: crypto.randomUUID() }]
-      })),
-      updateKnowledgeItem: (id, updates) => set((state) => ({
-        knowledgeBase: state.knowledgeBase.map(item =>
-          item.id === id ? { ...item, ...updates } : item
-        )
-      })),
-      removeKnowledgeItem: (id) => set((state) => ({
-        knowledgeBase: state.knowledgeBase.filter(item => item.id !== id)
-      })),
+      knowledgeBase: [],
+      knowledgeBaseLoading: false,
+      knowledgeBaseError: null,
+      loadKnowledgeBase: async () => {
+        set({ knowledgeBaseLoading: true, knowledgeBaseError: null });
+        try {
+          const dbUrl = import.meta.env.VITE_NEON_DATABASE_URL;
+          if (!dbUrl) {
+            // Fallback to default knowledge if no DB URL
+            set({ knowledgeBase: DEFAULT_KNOWLEDGE, knowledgeBaseLoading: false });
+            return;
+          }
+          const items = await getAllKnowledgeItems();
+          set({ knowledgeBase: items, knowledgeBaseLoading: false });
+        } catch (error) {
+          console.error('Error loading knowledge base:', error);
+          set({
+            knowledgeBaseError: error instanceof Error ? error.message : 'Failed to load knowledge base',
+            knowledgeBaseLoading: false,
+            // Fallback to default on error
+            knowledgeBase: DEFAULT_KNOWLEDGE,
+          });
+        }
+      },
+      addKnowledgeItem: async (item) => {
+        set({ knowledgeBaseError: null });
+        try {
+          const dbUrl = import.meta.env.VITE_NEON_DATABASE_URL;
+          if (!dbUrl) {
+            // Fallback to local storage
+            set((state) => ({
+              knowledgeBase: [...state.knowledgeBase, { ...item, id: crypto.randomUUID() }]
+            }));
+            return;
+          }
+          const newItem = await createKBItem(item);
+          set((state) => ({
+            knowledgeBase: [...state.knowledgeBase, newItem]
+          }));
+        } catch (error) {
+          console.error('Error adding knowledge item:', error);
+          set({
+            knowledgeBaseError: error instanceof Error ? error.message : 'Failed to add item',
+          });
+          // Fallback to local storage on error
+          set((state) => ({
+            knowledgeBase: [...state.knowledgeBase, { ...item, id: crypto.randomUUID() }]
+          }));
+        }
+      },
+      updateKnowledgeItem: async (id, updates) => {
+        set({ knowledgeBaseError: null });
+        try {
+          const dbUrl = import.meta.env.VITE_NEON_DATABASE_URL;
+          if (!dbUrl) {
+            // Fallback to local storage
+            set((state) => ({
+              knowledgeBase: state.knowledgeBase.map(item =>
+                item.id === id ? { ...item, ...updates } : item
+              )
+            }));
+            return;
+          }
+          const updatedItem = await updateKBItem(id, updates);
+          set((state) => ({
+            knowledgeBase: state.knowledgeBase.map(item =>
+              item.id === id ? updatedItem : item
+            )
+          }));
+        } catch (error) {
+          console.error('Error updating knowledge item:', error);
+          set({
+            knowledgeBaseError: error instanceof Error ? error.message : 'Failed to update item',
+          });
+          // Fallback to local storage on error
+          set((state) => ({
+            knowledgeBase: state.knowledgeBase.map(item =>
+              item.id === id ? { ...item, ...updates } : item
+            )
+          }));
+        }
+      },
+      removeKnowledgeItem: async (id) => {
+        set({ knowledgeBaseError: null });
+        try {
+          const dbUrl = import.meta.env.VITE_NEON_DATABASE_URL;
+          if (!dbUrl) {
+            // Fallback to local storage
+            set((state) => ({
+              knowledgeBase: state.knowledgeBase.filter(item => item.id !== id)
+            }));
+            return;
+          }
+          await deleteKBItem(id);
+          set((state) => ({
+            knowledgeBase: state.knowledgeBase.filter(item => item.id !== id)
+          }));
+        } catch (error) {
+          console.error('Error deleting knowledge item:', error);
+          set({
+            knowledgeBaseError: error instanceof Error ? error.message : 'Failed to delete item',
+          });
+          // Fallback to local storage on error
+          set((state) => ({
+            knowledgeBase: state.knowledgeBase.filter(item => item.id !== id)
+          }));
+        }
+      },
       
       isAgentThinking: false,
       setIsAgentThinking: (thinking) => set({ isAgentThinking: thinking }),
@@ -213,7 +318,7 @@ export const useResumeStore = create<ResumeState>()(
       name: 'resumeness-storage',
       partialize: (state) => ({
         versions: state.versions,
-        knowledgeBase: state.knowledgeBase,
+        // Don't persist knowledge base - it's now in the database
         latexContent: state.latexContent,
       }),
     }

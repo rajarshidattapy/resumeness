@@ -220,22 +220,37 @@ const ResumePreview = ({ latex }: { latex: string }) => {
         </div>
       ) : error ? (
         <div className="flex items-center justify-center h-full p-6">
-          <div className="bg-destructive/10 border border-destructive rounded-lg p-6 max-w-2xl">
+          <div className="bg-destructive/10 border border-destructive rounded-lg p-6 max-w-4xl w-full">
             <h3 className="text-lg font-semibold mb-2 text-destructive">Compilation Error</h3>
             <p className="text-sm text-muted-foreground mb-4">
               There was an error compiling your LaTeX document:
             </p>
-            <pre className="text-xs bg-black/5 dark:bg-white/5 p-4 rounded overflow-auto max-h-60">
-              {error}
+            <pre className="text-xs bg-black/5 dark:bg-white/5 p-4 rounded overflow-auto max-h-96 font-mono whitespace-pre-wrap break-words">
+              {error || 'No error details available'}
             </pre>
-            <Button
-              onClick={compileToPdf}
-              className="mt-4"
-              variant="outline"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Retry
-            </Button>
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={compileToPdf}
+                variant="outline"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+              <Button
+                onClick={() => {
+                  // Copy error to clipboard
+                  navigator.clipboard.writeText(error || '');
+                  toast({
+                    title: 'Error copied',
+                    description: 'Error message copied to clipboard',
+                  });
+                }}
+                variant="ghost"
+                size="sm"
+              >
+                Copy Error
+              </Button>
+            </div>
           </div>
         </div>
       ) : pdfUrl ? (

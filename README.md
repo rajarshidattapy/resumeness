@@ -1,6 +1,6 @@
 # Resumeness AI - AI-Powered Resume Builder
 
-An intelligent resume builder that uses LangChain and OpenRouter AI models to tailor resumes automatically using agentic capabilities to maximum ATS compatibility.
+An intelligent resume builder that uses LangChain and OpenAI models to tailor resumes automatically using agentic capabilities to maximum ATS compatibility.
 
 ## Features
 - Paste a JD, set proper knowledge base about your achievements,qualifications,projects etc. and see the AI doing the magic!
@@ -12,7 +12,7 @@ An intelligent resume builder that uses LangChain and OpenRouter AI models to ta
 ## Tech Stack
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui
-- **AI**: LangChain, OpenRouter AI
+- **AI**: LangChain, OpenAI
 - **Editor**: CodeMirror for LaTeX editing
 - **PDF Generation**: LaTeX compilation via ytotech API
 
@@ -45,7 +45,7 @@ npm install
 2. **Environment setup**:
 ```bash
 cp .env.template .env
-# Edit .env and add your OpenRouter API key
+# Edit .env and add your OpenAI API key
 ```
 
 3. **Start development server**:
@@ -55,4 +55,4 @@ npm run dev
 
 ## Environment Variables
 
-- `VITE_OPENROUTER_API_KEY`: Your OpenRouter API key (get from https://openrouter.ai/keys)
+- `VITE_OPENAI_API_KEY`: Your OpenAI API key (get from https://platform.openai.com/api-keys)

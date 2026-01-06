@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
@@ -123,17 +123,30 @@ interface ItemFormData {
 }
 
 const KnowledgeBasePage = () => {
-  const { knowledgeBase, addKnowledgeItem, updateKnowledgeItem, removeKnowledgeItem } = useResumeStore();
+  const { 
+    knowledgeBase, 
+    knowledgeBaseLoading,
+    knowledgeBaseError,
+    loadKnowledgeBase,
+    addKnowledgeItem, 
+    updateKnowledgeItem, 
+    removeKnowledgeItem 
+  } = useResumeStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<KnowledgeItem['type'] | 'all'>('all');
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<KnowledgeItem | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<ItemFormData>({
     type: 'project',
     title: '',
     content: '',
     tags: '',
   });
+
+  useEffect(() => {
+    loadKnowledgeBase();
+  }, [loadKnowledgeBase]);
 
   const filteredItems = knowledgeBase.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -143,30 +156,45 @@ const KnowledgeBasePage = () => {
     return matchesSearch && matchesType;
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.title.trim() || !formData.content.trim()) return;
 
+    setIsSaving(true);
     const tags = formData.tags.split(',').map(t => t.trim()).filter(Boolean);
 
-    if (editingItem) {
-      updateKnowledgeItem(editingItem.id, {
-        type: formData.type,
-        title: formData.title,
-        content: formData.content,
-        tags,
-      });
-      setEditingItem(null);
-    } else {
-      addKnowledgeItem({
-        type: formData.type,
-        title: formData.title,
-        content: formData.content,
-        tags,
-      });
-    }
+    try {
+      if (editingItem) {
+        await updateKnowledgeItem(editingItem.id, {
+          type: formData.type,
+          title: formData.title,
+          content: formData.content,
+          tags,
+        });
+        setEditingItem(null);
+      } else {
+        await addKnowledgeItem({
+          type: formData.type,
+          title: formData.title,
+          content: formData.content,
+          tags,
+        });
+      }
 
-    setFormData({ type: 'project', title: '', content: '', tags: '' });
-    setIsAdding(false);
+      setFormData({ type: 'project', title: '', content: '', tags: '' });
+      setIsAdding(false);
+    } catch (error) {
+      console.error('Error saving item:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    try {
+      await removeKnowledgeItem(id);
+    } catch (error) {
+      console.error('Error removing item:', error);
+    }
   };
 
   const handleEdit = (item: KnowledgeItem) => {
@@ -318,12 +346,21 @@ const KnowledgeBasePage = () => {
                     />
                   </div>
 
+                  {knowledgeBaseError && (
+                    <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
+                      {knowledgeBaseError}
+                    </div>
+                  )}
                   <div className="flex gap-3 pt-2">
-                    <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">
+                    <Button 
+                      onClick={handleSubmit} 
+                      className="bg-primary hover:bg-primary/90"
+                      disabled={isSaving}
+                    >
                       <Save className="w-4 h-4 mr-2" />
-                      {editingItem ? 'Save Changes' : 'Add Item'}
+                      {isSaving ? 'Saving...' : editingItem ? 'Save Changes' : 'Add Item'}
                     </Button>
-                    <Button variant="outline" onClick={handleCancel}>
+                    <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
                       Cancel
                     </Button>
                   </div>
@@ -333,21 +370,31 @@ const KnowledgeBasePage = () => {
           )}
         </AnimatePresence>
 
-        {/* Items Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <AnimatePresence mode="popLayout">
-            {filteredItems.map((item) => (
-              <KBItemCard
-                key={item.id}
-                item={item}
-                onEdit={handleEdit}
-                onRemove={() => removeKnowledgeItem(item.id)}
-              />
-            ))}
-          </AnimatePresence>
-        </div>
+        {/* Loading State */}
+        {knowledgeBaseLoading && (
+          <div className="text-center py-16">
+            <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4 animate-pulse" />
+            <p className="text-muted-foreground">Loading knowledge base...</p>
+          </div>
+        )}
 
-        {filteredItems.length === 0 && (
+        {/* Items Grid */}
+        {!knowledgeBaseLoading && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <AnimatePresence mode="popLayout">
+              {filteredItems.map((item) => (
+                <KBItemCard
+                  key={item.id}
+                  item={item}
+                  onEdit={handleEdit}
+                  onRemove={() => handleRemove(item.id)}
+                />
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {!knowledgeBaseLoading && filteredItems.length === 0 && (
           <div className="text-center py-16">
             <Database className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground mb-2">No items found</h3>

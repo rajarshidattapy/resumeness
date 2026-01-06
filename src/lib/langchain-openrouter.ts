@@ -1,91 +1,45 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { BaseMessage } from "@langchain/core/messages";
-import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
-import { ChatResult } from "@langchain/core/outputs";
 
-// OpenRouter models mapping
-export const OPENROUTER_MODELS = {
-  'mistral-7b': 'mistralai/mistral-7b-instruct:free',
-  'gemma-7b': 'google/gemma-7b-it:free',
-  'llama-3-8b': 'meta-llama/llama-3-8b-instruct:free'
+// OpenAI models mapping
+export const OPENAI_MODELS = {
+  'gpt-4': 'gpt-4',
+  'gpt-4-turbo': 'gpt-4-turbo',
+  'gpt-3.5-turbo': 'gpt-3.5-turbo',
+  'gpt-4o': 'gpt-4o',
+  'gpt-4o-mini': 'gpt-4o-mini'
 } as const;
 
-export type OpenRouterModelId = keyof typeof OPENROUTER_MODELS;
+export type OpenAIModelId = keyof typeof OPENAI_MODELS;
 
 /**
- * Custom LangChain Chat Model for OpenRouter
+ * Custom LangChain Chat Model wrapper for OpenAI
+ * Provides a consistent interface for the resume agent
  */
-export class ChatOpenRouter extends BaseChatModel {
-  private client: ChatOpenAI;
-  modelName: string;
-  temperature: number;
-  maxTokens?: number;
-
+export class ChatOpenAIClient extends ChatOpenAI {
   constructor(fields: {
-    modelName?: OpenRouterModelId;
+    modelName?: OpenAIModelId;
     temperature?: number;
     maxTokens?: number;
     openAIApiKey?: string;
   } = {}) {
-    super(fields);
-
-    const apiKey = fields.openAIApiKey || import.meta.env.VITE_OPENROUTER_API_KEY;
+    const apiKey = fields.openAIApiKey || import.meta.env.VITE_OPENAI_API_KEY;
     if (!apiKey) {
-      throw new Error('OPENROUTER_API_KEY is not configured. Please add it to your environment.');
+      throw new Error('OPENAI_API_KEY is not configured. Please add it to your environment.');
     }
 
-    this.modelName = OPENROUTER_MODELS[fields.modelName || 'mistral-7b'];
-    this.temperature = fields.temperature || 0.7;
-    this.maxTokens = fields.maxTokens || 2048;
+    const modelName = fields.modelName 
+      ? OPENAI_MODELS[fields.modelName] || fields.modelName
+      : OPENAI_MODELS['gpt-3.5-turbo'];
 
-    // Use OpenAI client with OpenRouter base URL
-    this.client = new ChatOpenAI({
+    super({
       openAIApiKey: apiKey,
-      modelName: this.modelName,
-      temperature: this.temperature,
-      maxTokens: this.maxTokens,
-      configuration: {
-        baseURL: 'https://openrouter.ai/api/v1',
-        defaultHeaders: {
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Resumeness',
-        },
-      },
+      modelName: modelName,
+      temperature: fields.temperature || 0.7,
+      maxTokens: fields.maxTokens || 2048,
     });
   }
-
-  _llmType(): string {
-    return "openrouter";
-  }
-
-  async _generate(
-    messages: BaseMessage[],
-    options?: this["ParsedCallOptions"],
-    runManager?: CallbackManagerForLLMRun
-  ): Promise<ChatResult> {
-    // Delegate to the underlying ChatOpenAI client
-    return this.client._generate(messages, options, runManager);
-  }
-
-  async *_streamResponseChunks(
-    messages: BaseMessage[],
-    options?: this["ParsedCallOptions"],
-    runManager?: CallbackManagerForLLMRun
-  ): AsyncGenerator<any> {
-    // Delegate streaming to the underlying ChatOpenAI client
-    for await (const chunk of this.client._streamResponseChunks(messages, options, runManager)) {
-      yield chunk;
-    }
-  }
-
-  // Required for tool calling agents
-  bind(kwargs: any) {
-    return this.client.bind(kwargs);
-  }
-
-  bindTools(tools: any[], kwargs?: any) {
-    // Delegate tool binding to the underlying ChatOpenAI client
-    return this.client.bindTools(tools, kwargs);
-  }
 }
+
+// Export for backward compatibility
+export const ChatOpenRouter = ChatOpenAIClient;
+export type OpenRouterModelId = OpenAIModelId;

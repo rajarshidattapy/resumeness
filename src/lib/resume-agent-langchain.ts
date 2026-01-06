@@ -1,5 +1,5 @@
 import { LatexResumeParser, extractTextFromLatex, isValidLatex } from './latex-parser';
-import { ChatOpenRouter, OpenRouterModelId } from './langchain-openrouter';
+import { ChatOpenAIClient, OpenAIModelId } from './langchain-openrouter';
 import { Tool } from "@langchain/core/tools";
 import { AgentExecutor, createToolCallingAgent } from "langchain/agents";
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
@@ -10,7 +10,7 @@ class AnalyzeJobDescriptionTool extends Tool {
   name = "analyze_job_description";
   description = "Analyze a job description to extract key requirements, skills, and keywords";
 
-  constructor(private llm: ChatOpenRouter, private knowledgeBase: KnowledgeItem[]) {
+  constructor(private llm: ChatOpenAIClient, private knowledgeBase: KnowledgeItem[]) {
     super();
   }
 
@@ -46,18 +46,45 @@ class SearchKnowledgeBaseTool extends Tool {
   }
 
   async _call(query: string): Promise<string> {
-    // Simple semantic search (could be enhanced with embeddings)
-    const relevant = this.knowledgeBase.filter(item =>
-      item.content.toLowerCase().includes(query.toLowerCase()) ||
-      item.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
-    ).slice(0, 3);
-
-    if (relevant.length === 0) {
-      return "No relevant items found in knowledge base.";
-    }
-
-    return `Relevant knowledge base items:
+    try {
+      // Try database search first if available
+      const dbUrl = import.meta.env.VITE_NEON_DATABASE_URL;
+      if (dbUrl) {
+        const { searchKnowledgeItems } = await import('@/lib/db/knowledgeBaseDb');
+        const relevant = await searchKnowledgeItems(query, 5);
+        if (relevant.length > 0) {
+          return `Relevant knowledge base items:
 ${relevant.map(item => `- ${item.title} (${item.type}): ${item.content}`).join('\n')}`;
+        }
+      }
+      
+      // Fallback to in-memory search
+      const relevant = this.knowledgeBase.filter(item =>
+        item.content.toLowerCase().includes(query.toLowerCase()) ||
+        item.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+      ).slice(0, 3);
+
+      if (relevant.length === 0) {
+        return "No relevant items found in knowledge base.";
+      }
+
+      return `Relevant knowledge base items:
+${relevant.map(item => `- ${item.title} (${item.type}): ${item.content}`).join('\n')}`;
+    } catch (error) {
+      console.error('Error searching knowledge base:', error);
+      // Fallback to in-memory search on error
+      const relevant = this.knowledgeBase.filter(item =>
+        item.content.toLowerCase().includes(query.toLowerCase()) ||
+        item.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+      ).slice(0, 3);
+
+      if (relevant.length === 0) {
+        return "No relevant items found in knowledge base.";
+      }
+
+      return `Relevant knowledge base items:
+${relevant.map(item => `- ${item.title} (${item.type}): ${item.content}`).join('\n')}`;
+    }
   }
 }
 
@@ -66,7 +93,7 @@ class RewriteResumeTool extends Tool {
   description = "Rewrite resume LaTeX content based on job description and instructions";
 
   constructor(
-    private llm: ChatOpenRouter,
+    private llm: ChatOpenAIClient,
     private currentLatex: string,
     private jobDescription: string,
     private knowledgeBase: KnowledgeItem[]
@@ -300,19 +327,19 @@ Total keywords analyzed: ${keywords.length}`;
 
 // Main Resume Agent Class
 export class ResumeAgent {
-  private llm: ChatOpenRouter;
+  private llm: ChatOpenAIClient;
   private agentExecutor: AgentExecutor;
   private knowledgeBase: KnowledgeItem[];
   private currentLatex: string;
   private jobDescription: string;
 
   constructor(
-    model: OpenRouterModelId = 'mistral-7b',
+    model: OpenAIModelId = 'gpt-3.5-turbo',
     knowledgeBase: KnowledgeItem[] = [],
     currentLatex = '',
     jobDescription = ''
   ) {
-    this.llm = new ChatOpenRouter({ modelName: model });
+    this.llm = new ChatOpenAIClient({ modelName: model });
     this.knowledgeBase = knowledgeBase;
     this.currentLatex = currentLatex;
     this.jobDescription = jobDescription;
@@ -408,7 +435,7 @@ Always use the appropriate tools to provide comprehensive resume optimization. W
 
 // Factory function to create agent
 export function createResumeAgent(
-  model: OpenRouterModelId = 'mistral-7b',
+  model: OpenAIModelId = 'gpt-3.5-turbo',
   knowledgeBase: KnowledgeItem[] = [],
   currentLatex = '',
   jobDescription = ''
