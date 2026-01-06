@@ -1,8 +1,10 @@
 import { LatexResumeParser, extractTextFromLatex, isValidLatex } from './latex-parser';
-import { ChatOpenAIClient, OpenAIModelId } from './langchain-openrouter';
+import { createChatOpenAI, OpenAIModelId } from './langchain-openrouter';
+import { ChatOpenAI } from '@langchain/openai';
 import { Tool } from "@langchain/core/tools";
-import { AgentExecutor, createToolCallingAgent } from "langchain/agents";
-import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
+import { AgentExecutor, createReactAgent } from "langchain/agents";
+import { ChatPromptTemplate, MessagesPlaceholder, PromptTemplate } from "@langchain/core/prompts";
+import { HumanMessage, SystemMessage, AIMessage } from "@langchain/core/messages";
 import { KnowledgeItem } from '@/stores/useResumeStore';
 
 // Resume Agent Tools
@@ -10,7 +12,7 @@ class AnalyzeJobDescriptionTool extends Tool {
   name = "analyze_job_description";
   description = "Analyze a job description to extract key requirements, skills, and keywords";
 
-  constructor(private llm: ChatOpenAIClient, private knowledgeBase: KnowledgeItem[]) {
+  constructor(private llm: ChatOpenAI, private knowledgeBase: KnowledgeItem[]) {
     super();
   }
 
@@ -28,12 +30,12 @@ ${input}
 Provide a structured analysis.`;
 
     const messages = [
-      { role: 'system' as const, content: 'You are an expert resume engineer. Analyze job descriptions professionally.' },
-      { role: 'user' as const, content: prompt }
+      new SystemMessage('You are an expert resume engineer. Analyze job descriptions professionally.'),
+      new HumanMessage(prompt)
     ];
 
-    const result = await this.llm.call(messages);
-    return result.content;
+    const result = await this.llm.invoke(messages);
+    return typeof result.content === 'string' ? result.content : String(result.content);
   }
 }
 
@@ -93,7 +95,7 @@ class RewriteResumeTool extends Tool {
   description = "Rewrite resume LaTeX content based on job description and instructions";
 
   constructor(
-    private llm: ChatOpenAIClient,
+    private llm: ChatOpenAI,
     private currentLatex: string,
     private jobDescription: string,
     private knowledgeBase: KnowledgeItem[]
@@ -181,7 +183,7 @@ Instructions: ${instructions}
 IMPORTANT: Output ONLY the modified LaTeX code for this section. Preserve the exact LaTeX formatting and commands. Do not include section headers or surrounding LaTeX structure.`;
 
     const messages = [
-      { role: 'system' as const, content: `You are an expert resume engineer specializing in LaTeX resume formatting. You understand complex LaTeX templates and custom commands.
+      new SystemMessage(`You are an expert resume engineer specializing in LaTeX resume formatting. You understand complex LaTeX templates and custom commands.
 
 CRITICAL RULES:
 1. Output ONLY the LaTeX content for the specific section being modified
@@ -189,13 +191,14 @@ CRITICAL RULES:
 3. Never break LaTeX syntax - maintain proper brace matching and command structure
 4. Only modify the actual content text, not the LaTeX formatting commands
 5. Use keywords from the job description naturally in the content
-6. Keep the same structure and number of items as the original unless specifically instructed otherwise` },
-      { role: 'user' as const, content: prompt }
+6. Keep the same structure and number of items as the original unless specifically instructed otherwise`),
+      new HumanMessage(prompt)
     ];
 
     try {
-      const result = await this.llm.call(messages);
-      const modifiedContent = result.content.trim();
+      const result = await this.llm.invoke(messages);
+      const content = typeof result.content === 'string' ? result.content : String(result.content);
+      const modifiedContent = content.trim();
 
       // Basic validation - ensure it still looks like LaTeX
       if (modifiedContent.includes('\\') || modifiedContent.includes('{')) {
@@ -327,27 +330,29 @@ Total keywords analyzed: ${keywords.length}`;
 
 // Main Resume Agent Class
 export class ResumeAgent {
-  private llm: ChatOpenAIClient;
-  private agentExecutor: AgentExecutor;
+  private llm: ChatOpenAI;
+  private agentExecutor: AgentExecutor | null = null;
   private knowledgeBase: KnowledgeItem[];
   private currentLatex: string;
   private jobDescription: string;
 
   constructor(
-    model: OpenAIModelId = 'gpt-3.5-turbo',
+    model: OpenAIModelId = 'gpt-4o-mini',
     knowledgeBase: KnowledgeItem[] = [],
     currentLatex = '',
     jobDescription = ''
   ) {
-    this.llm = new ChatOpenAIClient({ modelName: model });
+    this.llm = createChatOpenAI({ modelName: model });
     this.knowledgeBase = knowledgeBase;
     this.currentLatex = currentLatex;
     this.jobDescription = jobDescription;
-
-    this.initializeAgent();
   }
 
   private async initializeAgent() {
+    // If already initialized, skip
+    if (this.agentExecutor) {
+      return;
+    }
     const tools = [
       new AnalyzeJobDescriptionTool(this.llm, this.knowledgeBase),
       new SearchKnowledgeBaseTool(this.knowledgeBase),
@@ -355,37 +360,64 @@ export class ResumeAgent {
       new CalculateATSTool(this.currentLatex),
     ];
 
-    const prompt = ChatPromptTemplate.fromMessages([
-      ["system", `You are an expert resume engineer AI agent. Your job is to help tailor resumes to match job descriptions for maximum ATS compatibility.
+    // Create prompt template for ReAct agent
+    // Using PromptTemplate instead of ChatPromptTemplate to avoid MessagesPlaceholder validation issues
+    // createReactAgent expects {tools}, {tool_names}, {input}, and {agent_scratchpad}
+    const prompt = PromptTemplate.fromTemplate(`You are an expert resume engineer AI agent. Your job is to help tailor resumes to match job descriptions for maximum ATS compatibility.
 
-You have access to these tools:
-- analyze_job_description: Extract key requirements and keywords from job postings
-- search_knowledge_base: Find relevant experience and skills from the user's knowledge base
-- rewrite_resume: Modify resume LaTeX content based on job requirements
-- calculate_ats_score: Evaluate how well the resume matches the job description
+You have access to the following tools:
 
-Always use the appropriate tools to provide comprehensive resume optimization. When rewriting resumes, output ONLY pure LaTeX code.`],
-      ["human", "{input}"],
-      new MessagesPlaceholder("agent_scratchpad"),
-    ]);
+{tools}
 
-    const agent = await createToolCallingAgent({
-      llm: this.llm,
-      tools,
-      prompt,
-    });
+Tool names: {tool_names}
 
-    this.agentExecutor = new AgentExecutor({
-      agent,
-      tools,
-      verbose: true,
-    });
+Always use the appropriate tools to provide comprehensive resume optimization. When rewriting resumes, output ONLY pure LaTeX code.
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {input}
+Thought:{agent_scratchpad}`);
+
+    try {
+      // Use createReactAgent which doesn't require bindTools
+      // This uses the ReAct (Reasoning + Acting) pattern
+      // The prompt must include {tools}, {tool_names}, {input}, and {agent_scratchpad}
+      const agent = await createReactAgent({
+        llm: this.llm,
+        tools,
+        prompt,
+      });
+
+      this.agentExecutor = new AgentExecutor({
+        agent,
+        tools,
+        verbose: true,
+        maxIterations: 10,
+        returnIntermediateSteps: false,
+      });
+    } catch (error) {
+      console.error('Error initializing agent:', error);
+      throw new Error(`Failed to initialize agent: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async updateContext(currentLatex: string, jobDescription: string, knowledgeBase: KnowledgeItem[]) {
     this.currentLatex = currentLatex;
     this.jobDescription = jobDescription;
     this.knowledgeBase = knowledgeBase;
+    // Reset agent executor to force reinitialization with new context
+    this.agentExecutor = null;
     // Reinitialize agent with new context
     await this.initializeAgent();
   }
@@ -393,16 +425,11 @@ Always use the appropriate tools to provide comprehensive resume optimization. W
   async chat(message: string): Promise<string> {
     try {
       // Ensure agent is initialized
-
       if (!this.agentExecutor) {
-
         await this.initializeAgent();
-
       }
 
-      
-
-      const result = await this.agentExecutor.call({
+      const result = await this.agentExecutor.invoke({
         input: message,
       });
       return result.output;
@@ -435,7 +462,7 @@ Always use the appropriate tools to provide comprehensive resume optimization. W
 
 // Factory function to create agent
 export function createResumeAgent(
-  model: OpenAIModelId = 'gpt-3.5-turbo',
+  model: OpenAIModelId = 'gpt-4o-mini',
   knowledgeBase: KnowledgeItem[] = [],
   currentLatex = '',
   jobDescription = ''

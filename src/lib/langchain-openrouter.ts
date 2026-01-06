@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
 // OpenAI models mapping
 export const OPENAI_MODELS = {
@@ -12,34 +13,37 @@ export const OPENAI_MODELS = {
 export type OpenAIModelId = keyof typeof OPENAI_MODELS;
 
 /**
- * Custom LangChain Chat Model wrapper for OpenAI
- * Provides a consistent interface for the resume agent
+ * Factory function to create a properly configured ChatOpenAI instance
+ * This ensures tool calling support is available
  */
-export class ChatOpenAIClient extends ChatOpenAI {
-  constructor(fields: {
-    modelName?: OpenAIModelId;
-    temperature?: number;
-    maxTokens?: number;
-    openAIApiKey?: string;
-  } = {}) {
-    const apiKey = fields.openAIApiKey || import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('OPENAI_API_KEY is not configured. Please add it to your environment.');
-    }
-
-    const modelName = fields.modelName 
-      ? OPENAI_MODELS[fields.modelName] || fields.modelName
-      : OPENAI_MODELS['gpt-3.5-turbo'];
-
-    super({
-      openAIApiKey: apiKey,
-      modelName: modelName,
-      temperature: fields.temperature || 0.7,
-      maxTokens: fields.maxTokens || 2048,
-    });
+export function createChatOpenAI(fields: {
+  modelName?: OpenAIModelId;
+  temperature?: number;
+  maxTokens?: number;
+  openAIApiKey?: string;
+} = {}): ChatOpenAI {
+  const apiKey = fields.openAIApiKey || import.meta.env.VITE_OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY is not configured. Please add it to your environment.');
   }
+
+  const modelName = fields.modelName 
+    ? OPENAI_MODELS[fields.modelName] || fields.modelName
+    : OPENAI_MODELS['gpt-3.5-turbo'];
+
+  return new ChatOpenAI({
+    openAIApiKey: apiKey,
+    modelName: modelName,
+    temperature: fields.temperature || 0.7,
+    maxTokens: fields.maxTokens || 2048,
+  });
 }
 
+/**
+ * Type alias for ChatOpenAI - use createChatOpenAI() to create instances
+ */
+export type ChatOpenAIClient = ChatOpenAI;
+
 // Export for backward compatibility
-export const ChatOpenRouter = ChatOpenAIClient;
+export const ChatOpenRouter = ChatOpenAI;
 export type OpenRouterModelId = OpenAIModelId;

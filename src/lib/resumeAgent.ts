@@ -105,7 +105,7 @@ export function calculateATSScore(resume: string, jd: string): { score: number; 
 export async function analyzeJobDescription(
   jd: string,
   context?: AgentContext,
-  model: OpenAIModelId = 'gpt-3.5-turbo'
+  model: OpenAIModelId = 'gpt-4o-mini'
 ): Promise<string> {
   const agent = context?.agent || createResumeAgent(model, context?.knowledgeBase || []);
   return agent.analyzeJobDescription(jd);
@@ -115,7 +115,7 @@ export async function analyzeJobDescription(
 export async function rewriteResume(
   context: AgentContext,
   instructions: string,
-  model: OpenAIModelId = 'gpt-3.5-turbo'
+  model: OpenAIModelId = 'gpt-4o-mini'
 ): Promise<string> {
   const agent = context.agent || createResumeAgent(model, context.knowledgeBase, context.currentLatex, context.jobDescription);
   return agent.rewriteResume(instructions);
@@ -125,7 +125,7 @@ export async function rewriteResume(
 export async function* streamRewriteResume(
   context: AgentContext,
   instructions: string,
-  model: OpenAIModelId = 'gpt-3.5-turbo'
+  model: OpenAIModelId = 'gpt-4o-mini'
 ): AsyncGenerator<string, void, unknown> {
   // For now, just yield the result (streaming can be enhanced later)
   const result = await rewriteResume(context, instructions, model);
@@ -137,7 +137,7 @@ export async function chatWithAgent(
   userMessage: string,
   context: AgentContext,
   conversationHistory: { role: 'user' | 'assistant'; content: string }[],
-  model: OpenAIModelId = 'gpt-3.5-turbo'
+  model: OpenAIModelId = 'gpt-4o-mini'
 ): Promise<string> {
   const agent = context.agent || createResumeAgent(model, context.knowledgeBase, context.currentLatex, context.jobDescription);
   return agent.chat(userMessage);
