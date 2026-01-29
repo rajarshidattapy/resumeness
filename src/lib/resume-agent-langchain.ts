@@ -1,6 +1,6 @@
 import { LatexResumeParser, extractTextFromLatex, isValidLatex } from './latex-parser';
-import { createChatOpenAI, OpenAIModelId } from './langchain-openrouter';
-import { ChatOpenAI } from '@langchain/openai';
+import { createChatOllama, OllamaModelId } from './langchain-openrouter';
+import { ChatOllama } from '@langchain/community/chat_models/ollama';
 import { Tool } from "@langchain/core/tools";
 import { AgentExecutor, createReactAgent } from "langchain/agents";
 import { ChatPromptTemplate, MessagesPlaceholder, PromptTemplate } from "@langchain/core/prompts";
@@ -12,7 +12,7 @@ class AnalyzeJobDescriptionTool extends Tool {
   name = "analyze_job_description";
   description = "Analyze a job description to extract key requirements, skills, and keywords";
 
-  constructor(private llm: ChatOpenAI, private knowledgeBase: KnowledgeItem[]) {
+  constructor(private llm: ChatOllama, private knowledgeBase: KnowledgeItem[]) {
     super();
   }
 
@@ -95,7 +95,7 @@ class RewriteResumeTool extends Tool {
   description = "Rewrite resume LaTeX content based on job description and instructions";
 
   constructor(
-    private llm: ChatOpenAI,
+    private llm: ChatOllama,
     private currentLatex: string,
     private jobDescription: string,
     private knowledgeBase: KnowledgeItem[]
@@ -330,19 +330,19 @@ Total keywords analyzed: ${keywords.length}`;
 
 // Main Resume Agent Class
 export class ResumeAgent {
-  private llm: ChatOpenAI;
+  private llm: ChatOllama;
   private agentExecutor: AgentExecutor | null = null;
   private knowledgeBase: KnowledgeItem[];
   private currentLatex: string;
   private jobDescription: string;
 
   constructor(
-    model: OpenAIModelId = 'gpt-4o-mini',
+    model: OllamaModelId = 'glm-4.7:cloud',
     knowledgeBase: KnowledgeItem[] = [],
     currentLatex = '',
     jobDescription = ''
   ) {
-    this.llm = createChatOpenAI({ modelName: model });
+    this.llm = createChatOllama({ modelName: model });
     this.knowledgeBase = knowledgeBase;
     this.currentLatex = currentLatex;
     this.jobDescription = jobDescription;

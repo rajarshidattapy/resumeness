@@ -1,49 +1,50 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOllama } from "@langchain/community/chat_models/ollama";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
-// OpenAI models mapping
-export const OPENAI_MODELS = {
-  'gpt-4': 'gpt-4',
-  'gpt-4-turbo': 'gpt-4-turbo',
-  'gpt-3.5-turbo': 'gpt-3.5-turbo',
-  'gpt-4o': 'gpt-4o',
-  'gpt-4o-mini': 'gpt-4o-mini'
+// Ollama models mapping - focusing on GLM-4.7 Cloud model
+export const OLLAMA_MODELS = {
+  'glm-4.7:cloud': 'glm-4.7:cloud',
+  // Backup models (commented out since you want only GLM-4.7)
+  // 'llama3.1:8b': 'llama3.1:8b',
+  // 'llama3.2:3b': 'llama3.2:3b',
+  // 'mistral:7b': 'mistral:7b',
 } as const;
 
-export type OpenAIModelId = keyof typeof OPENAI_MODELS;
+export type OllamaModelId = keyof typeof OLLAMA_MODELS;
 
 /**
- * Factory function to create a properly configured ChatOpenAI instance
- * This ensures tool calling support is available
+ * Factory function to create a properly configured ChatOllama instance
+ * This ensures tool calling support is available for compatible models
  */
-export function createChatOpenAI(fields: {
-  modelName?: OpenAIModelId;
+export function createChatOllama(fields: {
+  modelName?: OllamaModelId;
   temperature?: number;
   maxTokens?: number;
-  openAIApiKey?: string;
-} = {}): ChatOpenAI {
-  const apiKey = fields.openAIApiKey || import.meta.env.VITE_OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not configured. Please add it to your environment.');
-  }
-
+  baseUrl?: string;
+} = {}): ChatOllama {
+  const baseUrl = fields.baseUrl || process.env.VITE_OLLAMA_BASE_URL || 'http://localhost:11434';
   const modelName = fields.modelName 
-    ? OPENAI_MODELS[fields.modelName] || fields.modelName
-    : OPENAI_MODELS['gpt-3.5-turbo'];
+    ? OLLAMA_MODELS[fields.modelName] || fields.modelName
+    : process.env.VITE_OLLAMA_MODEL || OLLAMA_MODELS['glm-4.7:cloud'];
 
-  return new ChatOpenAI({
-    openAIApiKey: apiKey,
-    modelName: modelName,
+  return new ChatOllama({
+    baseUrl: baseUrl,
+    model: modelName,
     temperature: fields.temperature || 0.7,
-    maxTokens: fields.maxTokens || 2048,
+    numCtx: fields.maxTokens || 4096, // Context window size for Ollama
   });
 }
 
 /**
- * Type alias for ChatOpenAI - use createChatOpenAI() to create instances
+ * Type alias for ChatOllama - use createChatOllama() to create instances
  */
-export type ChatOpenAIClient = ChatOpenAI;
+export type ChatOllamaClient = ChatOllama;
 
 // Export for backward compatibility
-export const ChatOpenRouter = ChatOpenAI;
-export type OpenRouterModelId = OpenAIModelId;
+export const ChatOpenRouter = ChatOllama;
+export type OpenRouterModelId = OllamaModelId;
+
+// Legacy exports for compatibility
+export const createChatOpenAI = createChatOllama;
+export type OpenAIModelId = OllamaModelId;
+export const OPENAI_MODELS = OLLAMA_MODELS;
