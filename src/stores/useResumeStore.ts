@@ -156,7 +156,7 @@ export const useResumeStore = create<ResumeState>()(
         {
           id: '1',
           role: 'assistant',
-          content: "I'm your resume engineering agent. Paste a job description and I'll analyze it against your resume, pull relevant experience from your knowledge base, and rewrite your LaTeX to maximize ATS compatibility.\n\nI can:\n• Parse job requirements and match them to your experience\n• Rewrite bullet points using the job's language\n• Suggest additions from your knowledge base\n• Track keyword matching score\n\nReady when you are.",
+          content: "I'm your **autonomous resume optimization agent**. I follow a rigorous 6-step process to maximize ATS compatibility:\n\n🎯 **Planning** → 🔍 **Analysis** → 📚 **Retrieval** → ✍️ **Rewriting** → ⚡ **Optimization** → ✅ **Verification**\n\n**Just paste a job description and I'll:**\n• Extract key requirements and ATS keywords\n• Search your knowledge base for relevant experience\n• Rewrite your LaTeX with job-aligned language\n• Optimize for maximum ATS compatibility\n• Verify accuracy and quality\n• Present comprehensive results\n\n**Ready to transform your resume? Paste a job description below!**",
           timestamp: new Date(),
         }
       ],

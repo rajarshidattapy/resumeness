@@ -2,7 +2,7 @@
 // Now powered by LangChain for more agentic behavior
 import { createResumeAgent, ResumeAgent } from './resume-agent-langchain';
 import { KnowledgeItem } from '@/stores/useResumeStore';
-import { OpenAIModelId } from './langchain-openrouter';
+import { OllamaModelId } from './langchain-openrouter';
 
 const SYSTEM_PROMPT = `You are an expert resume engineer AI agent. Your job is to help tailor resumes to match job descriptions for maximum ATS (Applicant Tracking System) compatibility.
 
@@ -105,7 +105,7 @@ export function calculateATSScore(resume: string, jd: string): { score: number; 
 export async function analyzeJobDescription(
   jd: string,
   context?: AgentContext,
-  model: OpenAIModelId = 'gpt-4o-mini'
+  model: OllamaModelId = 'glm-4.7:cloud'
 ): Promise<string> {
   const agent = context?.agent || createResumeAgent(model, context?.knowledgeBase || []);
   return agent.analyzeJobDescription(jd);
@@ -115,7 +115,7 @@ export async function analyzeJobDescription(
 export async function rewriteResume(
   context: AgentContext,
   instructions: string,
-  model: OpenAIModelId = 'gpt-4o-mini'
+  model: OllamaModelId = 'glm-4.7:cloud'
 ): Promise<string> {
   const agent = context.agent || createResumeAgent(model, context.knowledgeBase, context.currentLatex, context.jobDescription);
   return agent.rewriteResume(instructions);
@@ -125,7 +125,7 @@ export async function rewriteResume(
 export async function* streamRewriteResume(
   context: AgentContext,
   instructions: string,
-  model: OpenAIModelId = 'gpt-4o-mini'
+  model: OllamaModelId = 'glm-4.7:cloud'
 ): AsyncGenerator<string, void, unknown> {
   // For now, just yield the result (streaming can be enhanced later)
   const result = await rewriteResume(context, instructions, model);
@@ -137,7 +137,7 @@ export async function chatWithAgent(
   userMessage: string,
   context: AgentContext,
   conversationHistory: { role: 'user' | 'assistant'; content: string }[],
-  model: OpenAIModelId = 'gpt-4o-mini'
+  model: OllamaModelId = 'glm-4.7:cloud'
 ): Promise<string> {
   const agent = context.agent || createResumeAgent(model, context.knowledgeBase, context.currentLatex, context.jobDescription);
   return agent.chat(userMessage);

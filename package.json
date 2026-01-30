@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:agent": "tsx src/lib/test-ollama.ts",
-    "test:resume-agent": "tsx -e \"import('./src/lib/test-ollama.ts').then(m => m.testResumeAgentOllama())\""
+    "test:resume-agent": "tsx -e \"import('./src/lib/test-ollama.ts').then(m => m.testResumeAgentOllama())\"",
+    "test:optimization": "tsx src/lib/test-agent-optimization.ts"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.4",

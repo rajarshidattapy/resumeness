@@ -4,27 +4,66 @@ import { Send, Sparkles, FileText, Database, History, Loader2 } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { useResumeStore, Message } from '@/stores/useResumeStore';
 import { 
-  chatWithAgent, 
-  analyzeJobDescription, 
-  searchKnowledgeBase, 
+  optimizeResumeWithAgent,
   calculateATSScore,
-  rewriteResume 
-} from '@/lib/resumeAgent';
+} from '@/lib/agentIntegration';
+import { AgentStep } from '@/lib/agent/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import ReactMarkdown from 'react-markdown';
 
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+const OLLAMA_BASE_URL = import.meta.env.VITE_OLLAMA_BASE_URL || 'http://localhost:11434';
 
-const TypingIndicator = () => (
+// Check if Ollama is available
+const checkOllamaAvailability = async (): Promise<boolean> => {
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+const TypingIndicator = ({ currentStep, progress }: { 
+  currentStep?: AgentStep; 
+  progress?: number; 
+}) => (
   <div className="flex items-center gap-1.5 px-4 py-3">
     <div className="typing-indicator flex gap-1">
       <span className="w-2 h-2 rounded-full bg-primary" />
       <span className="w-2 h-2 rounded-full bg-primary" />
       <span className="w-2 h-2 rounded-full bg-primary" />
     </div>
-    <span className="text-sm text-muted-foreground ml-2">Agent is analyzing...</span>
+    <div className="flex flex-col ml-2">
+      <span className="text-sm text-muted-foreground">
+        {currentStep ? getStepMessage(currentStep) : 'Agent is analyzing...'}
+      </span>
+      {progress !== undefined && (
+        <div className="w-32 h-1 bg-secondary rounded-full mt-1">
+          <div 
+            className="h-full bg-primary rounded-full transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
+    </div>
   </div>
 );
+
+const getStepMessage = (step: AgentStep): string => {
+  const stepMessages: Record<AgentStep, string> = {
+    'planning': 'Creating optimization strategy...',
+    'analyzing': 'Analyzing job requirements...',
+    'retrieving': 'Searching knowledge base...',
+    'rewriting': 'Rewriting resume content...',
+    'optimizing': 'Optimizing for ATS...',
+    'verifying': 'Verifying quality...',
+    'presenting': 'Preparing results...',
+    'completed': 'Optimization complete!',
+    'error': 'Processing error occurred',
+  };
+  return stepMessages[step] || 'Processing...';
+};
 
 const MessageBubble = ({ message }: { message: Message }) => {
   const isUser = message.role === 'user';
@@ -54,7 +93,9 @@ const MessageBubble = ({ message }: { message: Message }) => {
             <span className="text-xs font-medium text-primary">Resume Agent</span>
           </div>
         )}
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+        <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-headings:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1 prose-strong:text-foreground prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-lg prose-blockquote:border-l-primary prose-blockquote:pl-4 prose-blockquote:italic">
+          <ReactMarkdown>{message.content}</ReactMarkdown>
+        </div>
         <span className="text-[10px] opacity-50 mt-2 block">
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -65,9 +106,9 @@ const MessageBubble = ({ message }: { message: Message }) => {
 
 const QuickActions = ({ onAction }: { onAction: (action: string) => void }) => {
   const actions = [
-    { icon: FileText, label: 'Analyze JD', action: 'analyze_jd' },
-    { icon: Database, label: 'Search KB', action: 'search_kb' },
-    { icon: History, label: 'View History', action: 'view_history' },
+    { icon: FileText, label: 'Sample JD', action: 'sample_jd' },
+    { icon: Database, label: 'View KB', action: 'view_kb' },
+    { icon: History, label: 'History', action: 'view_history' },
   ];
 
   return (
@@ -90,6 +131,9 @@ const QuickActions = ({ onAction }: { onAction: (action: string) => void }) => {
 
 export const ChatPanel = () => {
   const [input, setInput] = useState('');
+  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+  const [currentStep, setCurrentStep] = useState<AgentStep | undefined>();
+  const [progress, setProgress] = useState<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -104,7 +148,6 @@ export const ChatPanel = () => {
     setAtsScore,
     setMatchedKeywords,
     knowledgeBase,
-    jobDescription,
     setJobDescription,
     addVersion,
   } = useResumeStore();
@@ -117,112 +160,90 @@ export const ChatPanel = () => {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    // Check Ollama availability on component mount
+    checkOllamaAvailability().then(setOllamaAvailable);
+  }, []);
+
   const processWithAgent = async (userMessage: string) => {
     setIsAgentThinking(true);
-    
-    const lowerMessage = userMessage.toLowerCase();
+    setCurrentStep(undefined);
+    setProgress(0);
     
     try {
-      // Check if OpenAI API key is available
-      if (!OPENAI_API_KEY) {
+      // Check if Ollama is available
+      if (ollamaAvailable === false) {
         // Fallback to simulated responses
         await simulateAgentResponse(userMessage);
         return;
       }
 
-      // Detect intent and route accordingly
-      if (lowerMessage.includes('job description') || lowerMessage.includes('jd') || userMessage.length > 200) {
-        // Likely pasting a job description
-        setJobDescription(userMessage);
-        
-        const analysis = await analyzeJobDescription(userMessage);
-        const atsResult = calculateATSScore(latexContent, userMessage);
-        
-        setAtsScore(atsResult.score);
-        setMatchedKeywords(atsResult.matched);
-        
-        addMessage({ 
-          role: 'assistant', 
-          content: `${analysis}\n\n**Current ATS Match: ${atsResult.score}%**\n\nMatched keywords: ${atsResult.matched.join(', ')}\nMissing keywords: ${atsResult.missing.join(', ')}\n\nSay "proceed" to let me rewrite your resume.` 
-        });
-      } else if (lowerMessage.includes('proceed') || lowerMessage.includes('rewrite') || lowerMessage.includes('modify')) {
-        if (!jobDescription) {
-          addMessage({ 
-            role: 'assistant', 
-            content: 'Please paste a job description first so I can tailor your resume accordingly.' 
-          });
-          return;
-        }
+      // Store the job description
+      setJobDescription(userMessage);
+      
+      // Calculate current ATS score
+      const currentAtsResult = calculateATSScore(latexContent, userMessage);
+      setAtsScore(currentAtsResult.score);
+      setMatchedKeywords(currentAtsResult.matched);
+      
+      // Save current version before modifying
+      addVersion({
+        latex: latexContent,
+        description: 'Before AI optimization',
+        atsScore: currentAtsResult.score,
+      });
+      
+      // Show initial analysis message
+      addMessage({ 
+        role: 'assistant', 
+        content: `🚀 **Starting autonomous resume optimization...**\n\n**Current ATS Match: ${currentAtsResult.score}%**\n\nI'll now execute the complete 6-step optimization process:\n1. **Planning** - Create optimization strategy\n2. **Analysis** - Extract job requirements\n3. **Retrieval** - Search knowledge base\n4. **Rewriting** - Update resume content\n5. **Optimization** - Enhance ATS compatibility\n6. **Verification** - Quality assurance\n\nThis may take 30-60 seconds...` 
+      });
+      
+      // Set up progress callback
+      const progressCallback = (step: AgentStep, progressPercent: number, message: string) => {
+        setCurrentStep(step);
+        setProgress(progressPercent);
+      };
 
-        // Save current version before modifying
-        addVersion({
-          latex: latexContent,
-          description: 'Before AI rewrite',
-          atsScore: calculateATSScore(latexContent, jobDescription).score,
-        });
+      // Execute the full autonomous optimization
+      const result = await optimizeResumeWithAgent(
+        userMessage,
+        latexContent,
+        knowledgeBase,
+        progressCallback
+      );
 
-        const newLatex = await rewriteResume(
-          { jobDescription, currentLatex: latexContent, knowledgeBase },
-          'Rewrite the resume to maximize ATS compatibility with the job description. Use the exact language from the JD. Add relevant items from knowledge base if appropriate.'
-        );
-
-        setLatexContent(newLatex);
+      if (result.success) {
+        // Update the editor with optimized content
+        setLatexContent(result.optimizedLatex);
         
-        const newAtsResult = calculateATSScore(newLatex, jobDescription);
-        setAtsScore(newAtsResult.score);
+        // Update ATS score
+        setAtsScore(result.atsScoreAfter);
+        
+        // Calculate new matched keywords
+        const newAtsResult = calculateATSScore(result.optimizedLatex, userMessage);
         setMatchedKeywords(newAtsResult.matched);
 
+        // Show success results
+        const improvement = result.atsScoreAfter - result.atsScoreBefore;
         addMessage({ 
           role: 'assistant', 
-          content: `Done! I've rewritten your resume to match the job description.\n\n**New ATS Score: ${newAtsResult.score}%** (was ${calculateATSScore(latexContent, jobDescription).score}%)\n\nChanges made:\n• Updated language to mirror JD\n• Emphasized relevant skills\n• Incorporated relevant KB items\n\nReview the changes in the editor. Say "undo" to restore the previous version.` 
+          content: `✅ **Autonomous optimization completed successfully!**\n\n📊 **Results:**\n• **ATS Score:** ${result.atsScoreBefore}% → ${result.atsScoreAfter}% ${improvement > 0 ? `(+${improvement}% improvement)` : ''}\n• **Execution Time:** ${Math.round(result.executionTime / 1000)}s\n• **Sections Modified:** ${result.changes.length}\n\n🔑 **Matched Keywords:** ${newAtsResult.matched.slice(0, 8).join(', ')}\n\n📝 **Key Changes Applied:**\n${result.changes.slice(0, 5).map(change => `• ${change}`).join('\n')}\n\n✨ **Your resume has been automatically optimized and updated in the editor!** You can restore the previous version from Version History if needed.` 
         });
-      } else if (lowerMessage.includes('knowledge') || lowerMessage.includes('kb') || lowerMessage.includes('search')) {
-        const relevantItems = searchKnowledgeBase(
-          jobDescription || userMessage, 
-          knowledgeBase, 
-          5
-        );
-
-        if (relevantItems.length > 0) {
-          const itemsList = relevantItems.map((item, i) => 
-            `**${i + 1}. ${item.title}** (${item.type})\n${item.content.slice(0, 150)}...`
-          ).join('\n\n');
-
-          addMessage({ 
-            role: 'assistant', 
-            content: `Found ${relevantItems.length} relevant items:\n\n${itemsList}\n\nWould you like me to incorporate any of these into your resume?` 
-          });
-        } else {
-          addMessage({ 
-            role: 'assistant', 
-            content: 'No matching items found in your knowledge base. Try adding more projects, skills, or achievements.' 
-          });
-        }
-      } else if (lowerMessage.includes('undo') || lowerMessage.includes('revert')) {
-        addMessage({ 
-          role: 'assistant', 
-          content: 'You can restore any previous version from the Version History in the sidebar. Click on a version to preview and restore it.' 
-        });
+        
       } else {
-        // General chat with context
-        const conversationHistory = messages.slice(-10).map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
-
-        const response = await chatWithAgent(
-          userMessage,
-          { jobDescription, currentLatex: latexContent, knowledgeBase },
-          conversationHistory
-        );
-
-        addMessage({ role: 'assistant', content: response });
+        // Show failure message but preserve original
+        addMessage({ 
+          role: 'assistant', 
+          content: `⚠️ **Optimization encountered issues**\n\n**Current ATS Match: ${currentAtsResult.score}%**\n\nThe original resume has been preserved. Issues encountered:\n${result.changes.join('\n')}\n\n**Suggestions:**\n• Ensure the job description is complete and detailed\n• Add more relevant experience to your knowledge base\n• Try with a more specific job description\n• Check that Ollama is running with the GLM-4.7 model` 
+        });
       }
+      
     } catch (error) {
       console.error('Agent error:', error);
       toast({
-        title: 'Agent Error',
-        description: error instanceof Error ? error.message : 'Failed to process your request.',
+        title: 'Processing Error',
+        description: 'Failed to process your request. Please check Ollama connection.',
         variant: 'destructive',
       });
       
@@ -230,27 +251,21 @@ export const ChatPanel = () => {
       await simulateAgentResponse(userMessage);
     } finally {
       setIsAgentThinking(false);
+      setCurrentStep(undefined);
+      setProgress(0);
     }
   };
 
   const simulateAgentResponse = async (userMessage: string) => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    const lowerMessage = userMessage.toLowerCase();
-    let response = '';
+    // Simulate the same workflow but without actual AI
+    setJobDescription(userMessage);
+    const atsResult = calculateATSScore(latexContent, userMessage);
+    setAtsScore(atsResult.score);
+    setMatchedKeywords(atsResult.matched);
     
-    if (lowerMessage.includes('job description') || lowerMessage.includes('jd') || userMessage.length > 200) {
-      setJobDescription(userMessage);
-      const atsResult = calculateATSScore(latexContent, userMessage);
-      setAtsScore(atsResult.score);
-      setMatchedKeywords(atsResult.matched);
-      
-      response = `I've analyzed the job description.\n\n**Key Requirements Detected:**\n• Software engineering experience\n• React/TypeScript proficiency\n• Cloud platform experience (AWS/GCP)\n• Team collaboration skills\n\n**Current ATS Match: ${atsResult.score}%**\n\nMatched: ${atsResult.matched.join(', ')}\n\nSay "proceed" to let me rewrite your resume, or add your OpenAI API key for full AI capabilities.`;
-    } else if (lowerMessage.includes('proceed') || lowerMessage.includes('rewrite')) {
-      response = 'To enable AI-powered resume rewriting, please add your OpenAI API key. For now, you can manually edit the LaTeX in the editor using the analysis I provided.';
-    } else {
-      response = `I understand you want to optimize your resume. Here's what I can do:\n\n1. **Paste a job description** - I'll extract key requirements\n2. **Say "search KB"** - I'll find relevant experience\n3. **Say "proceed"** - I'll modify your LaTeX (requires API key)\n\nFor full AI capabilities, add your OpenAI API key in the environment variables.`;
-    }
+    const response = `🤖 **Offline Mode - Ollama Unavailable**\n\n**Current ATS Match: ${atsResult.score}%**\n\n**Analysis Results:**\n• Matched keywords: ${atsResult.matched.slice(0, 5).join(', ')}\n• Missing keywords: ${atsResult.missing.slice(0, 5).join(', ')}\n\n**To enable full autonomous optimization:**\n1. Install Ollama from https://ollama.ai\n2. Run: \`ollama pull glm-4.7:cloud\`\n3. Ensure Ollama is running on port 11434\n\n**Manual Optimization Tips:**\n• Add missing keywords naturally to your experience\n• Use action verbs from the job description\n• Quantify achievements where possible\n• Prioritize relevant skills and technologies\n\nFor now, you can manually edit the LaTeX using this analysis.`;
     
     addMessage({ role: 'assistant', content: response });
   };
@@ -274,18 +289,47 @@ export const ChatPanel = () => {
 
   const handleQuickAction = (action: string) => {
     switch (action) {
-      case 'analyze_jd':
-        setInput('Analyze this job description and tell me what changes to make:\n\n');
+      case 'sample_jd':
+        const sampleJD = `Software Engineer - Machine Learning
+        
+We are seeking a talented Software Engineer with expertise in Machine Learning to join our AI team. 
+
+Requirements:
+• 3+ years of software development experience
+• Strong proficiency in Python, JavaScript, and SQL
+• Experience with ML frameworks (TensorFlow, PyTorch, Scikit-learn)
+• Knowledge of cloud platforms (AWS, GCP, Azure)
+• Experience with REST APIs and microservices
+• Strong problem-solving and communication skills
+
+Preferred:
+• Experience with NLP and Computer Vision
+• Knowledge of MLOps and model deployment
+• Agile development experience`;
+        
+        setInput(sampleJD);
         inputRef.current?.focus();
         break;
-      case 'search_kb':
-        addMessage({ role: 'user', content: 'Search my knowledge base for relevant experience' });
-        processWithAgent('Search my knowledge base for relevant experience');
+      case 'view_kb':
+        if (knowledgeBase.length > 0) {
+          const kbSummary = knowledgeBase.slice(0, 3).map(item => 
+            `• ${item.title} (${item.type})`
+          ).join('\n');
+          addMessage({ 
+            role: 'assistant', 
+            content: `Your knowledge base contains ${knowledgeBase.length} items:\n\n${kbSummary}${knowledgeBase.length > 3 ? '\n• ...' : ''}\n\nAdd more items in the Knowledge Base page to improve resume optimization.` 
+          });
+        } else {
+          addMessage({ 
+            role: 'assistant', 
+            content: 'Your knowledge base is empty. Add your projects, skills, and achievements in the Knowledge Base page to help me optimize your resume better.' 
+          });
+        }
         break;
       case 'view_history':
         addMessage({ 
           role: 'assistant', 
-          content: 'Your version history is displayed in the sidebar. You have saved versions you can restore at any time.' 
+          content: 'Your version history is displayed in the sidebar. You can restore any previous version by clicking on it.' 
         });
         break;
     }
@@ -304,7 +348,7 @@ export const ChatPanel = () => {
         <div>
           <h2 className="font-semibold text-foreground">Resume Agent</h2>
           <p className="text-xs text-muted-foreground">
-            {OPENAI_API_KEY ? 'AI-powered' : 'Demo mode'} • Paste JD to start
+            {ollamaAvailable ? 'GLM-4.7 Ready' : ollamaAvailable === false ? 'Ollama unavailable' : 'Checking Ollama...'} • Paste JD to optimize
           </p>
         </div>
       </div>
@@ -326,7 +370,7 @@ export const ChatPanel = () => {
             animate={{ opacity: 1 }}
             className="bg-chat-ai rounded-2xl rounded-bl-md border border-border/50"
           >
-            <TypingIndicator />
+            <TypingIndicator currentStep={currentStep} progress={progress} />
           </motion.div>
         )}
         
@@ -342,7 +386,7 @@ export const ChatPanel = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Paste a job description or ask me to optimize..."
+              placeholder="Paste your job description here and I'll automatically optimize your resume..."
               rows={1}
               className="w-full resize-none rounded-xl bg-secondary border border-border/50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 placeholder:text-muted-foreground"
               style={{ minHeight: '48px', maxHeight: '120px' }}
@@ -361,7 +405,7 @@ export const ChatPanel = () => {
           </Button>
         </div>
         <p className="text-[10px] text-muted-foreground mt-2 text-center">
-          Press Enter to send • Shift+Enter for new line
+          Autonomous AI agent with 6-step optimization process • Paste job description to start
         </p>
       </div>
     </div>

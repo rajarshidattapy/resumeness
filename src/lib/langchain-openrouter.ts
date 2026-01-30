@@ -22,10 +22,18 @@ export function createChatOllama(fields: {
   maxTokens?: number;
   baseUrl?: string;
 } = {}): ChatOllama {
-  const baseUrl = fields.baseUrl || process.env.VITE_OLLAMA_BASE_URL || 'http://localhost:11434';
+  // Handle both browser (import.meta.env) and Node.js (process.env) environments
+  const getEnvVar = (key: string, fallback: string) => {
+    if (typeof window !== 'undefined' && import.meta?.env) {
+      return import.meta.env[key] || fallback;
+    }
+    return process.env[key] || fallback;
+  };
+
+  const baseUrl = fields.baseUrl || getEnvVar('VITE_OLLAMA_BASE_URL', 'http://localhost:11434');
   const modelName = fields.modelName 
     ? OLLAMA_MODELS[fields.modelName] || fields.modelName
-    : process.env.VITE_OLLAMA_MODEL || OLLAMA_MODELS['glm-4.7:cloud'];
+    : getEnvVar('VITE_OLLAMA_MODEL', OLLAMA_MODELS['glm-4.7:cloud']);
 
   return new ChatOllama({
     baseUrl: baseUrl,

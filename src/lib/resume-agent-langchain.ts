@@ -371,7 +371,12 @@ You have access to the following tools:
 
 Tool names: {tool_names}
 
-Always use the appropriate tools to provide comprehensive resume optimization. When rewriting resumes, output ONLY pure LaTeX code.
+CRITICAL FORMATTING RULES:
+1. NEVER include both an Action and a Final Answer in the same response
+2. Either take an Action OR provide a Final Answer, never both
+3. When you have enough information, provide ONLY a Final Answer
+4. When you need more information, provide ONLY a Thought and Action
+5. Follow the exact format below
 
 Use the following format:
 
@@ -402,9 +407,10 @@ Thought:{agent_scratchpad}`);
       this.agentExecutor = new AgentExecutor({
         agent,
         tools,
-        verbose: true,
-        maxIterations: 10,
+        verbose: false, // Reduce verbosity to avoid parsing issues
+        maxIterations: 5, // Reduce max iterations to prevent long responses
         returnIntermediateSteps: false,
+        handleParsingErrors: true, // Handle parsing errors gracefully
       });
     } catch (error) {
       console.error('Error initializing agent:', error);
@@ -435,7 +441,37 @@ Thought:{agent_scratchpad}`);
       return result.output;
     } catch (error) {
       console.error('Agent execution error:', error);
-      return 'I encountered an error while processing your request. Please try again.';
+      
+      // Fallback to direct tool usage for common requests
+      const lowerMessage = message.toLowerCase();
+      
+      if (lowerMessage.includes('analyze') && this.jobDescription) {
+        try {
+          return await this.analyzeJobDescription(this.jobDescription);
+        } catch (fallbackError) {
+          console.error('Fallback analyze error:', fallbackError);
+        }
+      }
+      
+      if (lowerMessage.includes('search') || lowerMessage.includes('knowledge')) {
+        try {
+          return await this.searchKnowledgeBase(message);
+        } catch (fallbackError) {
+          console.error('Fallback search error:', fallbackError);
+        }
+      }
+      
+      if (lowerMessage.includes('rewrite') || lowerMessage.includes('improve')) {
+        try {
+          const rewriteTool = new RewriteResumeTool(this.llm, this.currentLatex, this.jobDescription, this.knowledgeBase);
+          return await rewriteTool._call('Improve the resume to match the job description better');
+        } catch (fallbackError) {
+          console.error('Fallback rewrite error:', fallbackError);
+        }
+      }
+      
+      // Final fallback
+      return 'I encountered an error while processing your request. Please try a simpler request like "analyze job description" or "search knowledge base".';
     }
   }
 
@@ -462,7 +498,7 @@ Thought:{agent_scratchpad}`);
 
 // Factory function to create agent
 export function createResumeAgent(
-  model: OpenAIModelId = 'gpt-4o-mini',
+  model: OllamaModelId = 'glm-4.7:cloud',
   knowledgeBase: KnowledgeItem[] = [],
   currentLatex = '',
   jobDescription = ''
