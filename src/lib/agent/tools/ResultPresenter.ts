@@ -24,9 +24,14 @@ export class ResultPresenter {
       verificationPassed: boolean;
     };
   }> {
-    const { atsScoreBefore, atsScoreAfter } = optimizationResults;
-    const { changesApplied, sectionsModified } = optimizationResults;
-    const { verificationResult, autoFixedIssues } = verificationResults;
+    // Safely destructure with defaults
+    const atsScoreBefore = optimizationResults?.atsScoreBefore || { overall: 0 };
+    const atsScoreAfter = optimizationResults?.atsScoreAfter || { overall: 0 };
+    const changesApplied = optimizationResults?.changesApplied || [];
+    const sectionsModified = optimizationResults?.sectionsModified || [];
+    const verificationResult = verificationResults?.verificationResult || {};
+    const autoFixedIssues = verificationResults?.autoFixedIssues || [];
+    const verificationPassed = verificationResults?.passed ?? false;
 
     // Format changes for presentation
     const changes = this.formatChanges(changesApplied, autoFixedIssues);
@@ -36,14 +41,14 @@ export class ResultPresenter {
       atsScoreBefore,
       atsScoreAfter,
       sectionsModified,
-      verificationResults.passed
+      verificationPassed
     );
 
     // Generate recommendations
     const recommendations = this.generateRecommendations(
       atsScoreAfter,
       verificationResult,
-      optimizationResults
+      optimizationResults || {}
     );
 
     // Calculate metrics
@@ -53,12 +58,12 @@ export class ResultPresenter {
       atsScoreBefore,
       atsScoreAfter,
       sectionsModified,
-      verificationResults.passed
+      verificationPassed
     );
 
     return {
-      atsScoreBefore: atsScoreBefore.overall,
-      atsScoreAfter: atsScoreAfter.overall,
+      atsScoreBefore: atsScoreBefore?.overall ?? 0,
+      atsScoreAfter: atsScoreAfter?.overall ?? 0,
       changes,
       summary,
       recommendations,
@@ -70,13 +75,13 @@ export class ResultPresenter {
    * Format changes for user-friendly presentation
    */
   private formatChanges(
-    changesApplied: any[],
-    autoFixedIssues: string[]
+    changesApplied: any[] | undefined,
+    autoFixedIssues: string[] | undefined
   ): ChangeDescription[] {
     const formattedChanges: ChangeDescription[] = [];
 
     // Format optimization changes
-    changesApplied.forEach(change => {
+    (changesApplied || []).forEach(change => {
       formattedChanges.push({
         section: change.section || 'General',
         changeType: change.changeType || 'content',
@@ -87,7 +92,7 @@ export class ResultPresenter {
     });
 
     // Format auto-fixed issues
-    autoFixedIssues.forEach(issue => {
+    (autoFixedIssues || []).forEach(issue => {
       formattedChanges.push({
         section: 'Quality Assurance',
         changeType: 'structure',

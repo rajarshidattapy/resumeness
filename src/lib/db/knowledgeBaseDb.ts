@@ -1,39 +1,59 @@
-import { neon } from '@neondatabase/serverless';
 import { KnowledgeItem } from '@/stores/useResumeStore';
 
-const sql = neon(import.meta.env.VITE_NEON_DATABASE_URL || '');
+const STORAGE_KEY = 'resumeness-knowledge-base';
 
 /**
- * Initialize the knowledge_base table if it doesn't exist
+ * Read all items from localStorage
+ */
+function readStorage(): KnowledgeItem[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as KnowledgeItem[];
+  } catch {
+    console.warn('Failed to read knowledge base from localStorage');
+    return [];
+  }
+}
+
+/**
+ * Write all items to localStorage
+ */
+function writeStorage(items: KnowledgeItem[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch (e) {
+    console.error('Failed to write knowledge base to localStorage:', e);
+  }
+}
+
+// Fallback for crypto.randomUUID() in non-secure contexts
+const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+/**
+ * Initialize the knowledge base (no-op for localStorage, kept for API compat)
  */
 export async function initKnowledgeBaseTable(): Promise<void> {
-  try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS knowledge_base (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        type VARCHAR(20) NOT NULL CHECK (type IN ('project', 'skill', 'experience', 'achievement')),
-        title VARCHAR(255) NOT NULL,
-        content TEXT NOT NULL,
-        tags TEXT[] DEFAULT '{}',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
+  // localStorage doesn't need table creation
+}
 
-    // Create index for full-text search
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_knowledge_base_search 
-      ON knowledge_base USING GIN (to_tsvector('english', title || ' ' || content))
-    `;
-
-    // Create index for tags
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_knowledge_base_tags 
-      ON knowledge_base USING GIN (tags)
-    `;
-  } catch (error) {
-    console.error('Error initializing knowledge base table:', error);
-    throw error;
+/**
+ * Seed the knowledge base with default items if it's empty
+ */
+export async function seedKnowledgeBase(defaults: KnowledgeItem[]): Promise<void> {
+  const existing = readStorage();
+  if (existing.length === 0) {
+    writeStorage(defaults);
+    console.log(`Seeded knowledge base with ${defaults.length} items`);
   }
 }
 
@@ -41,66 +61,15 @@ export async function initKnowledgeBaseTable(): Promise<void> {
  * Get all knowledge base items
  */
 export async function getAllKnowledgeItems(): Promise<KnowledgeItem[]> {
-  try {
-    const rows = await sql`
-      SELECT 
-        id::text as id,
-        type,
-        title,
-        content,
-        tags
-      FROM knowledge_base
-      ORDER BY created_at DESC
-    `;
-
-    return rows.map((row: any) => ({
-      id: row.id,
-      type: row.type as KnowledgeItem['type'],
-      title: row.title,
-      content: row.content,
-      tags: row.tags || [],
-      embedding: undefined, // Embeddings can be added later if pgvector is enabled
-    }));
-  } catch (error) {
-    console.error('Error fetching knowledge items:', error);
-    throw error;
-  }
+  return readStorage();
 }
 
 /**
  * Get a single knowledge base item by ID
  */
 export async function getKnowledgeItem(id: string): Promise<KnowledgeItem | null> {
-  try {
-    const rows = await sql`
-      SELECT 
-        id::text as id,
-        type,
-        title,
-        content,
-        tags
-      FROM knowledge_base
-      WHERE id = ${id}::uuid
-      LIMIT 1
-    `;
-
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const row = rows[0] as any;
-    return {
-      id: row.id,
-      type: row.type as KnowledgeItem['type'],
-      title: row.title,
-      content: row.content,
-      tags: row.tags || [],
-      embedding: row.embedding ? Array.from(row.embedding) : undefined,
-    };
-  } catch (error) {
-    console.error('Error fetching knowledge item:', error);
-    throw error;
-  }
+  const items = readStorage();
+  return items.find(item => item.id === id) ?? null;
 }
 
 /**
@@ -109,26 +78,14 @@ export async function getKnowledgeItem(id: string): Promise<KnowledgeItem | null
 export async function createKnowledgeItem(
   item: Omit<KnowledgeItem, 'id'>
 ): Promise<KnowledgeItem> {
-  try {
-    const rows = await sql`
-      INSERT INTO knowledge_base (type, title, content, tags)
-      VALUES (${item.type}, ${item.title}, ${item.content}, ${item.tags || []})
-      RETURNING id::text as id, type, title, content, tags
-    `;
-
-    const row = rows[0] as any;
-    return {
-      id: row.id,
-      type: row.type as KnowledgeItem['type'],
-      title: row.title,
-      content: row.content,
-      tags: row.tags || [],
-      embedding: row.embedding ? Array.from(row.embedding) : undefined,
-    };
-  } catch (error) {
-    console.error('Error creating knowledge item:', error);
-    throw error;
-  }
+  const items = readStorage();
+  const newItem: KnowledgeItem = {
+    ...item,
+    id: generateUUID(),
+  };
+  items.push(newItem);
+  writeStorage(items);
+  return newItem;
 }
 
 /**
@@ -138,66 +95,23 @@ export async function updateKnowledgeItem(
   id: string,
   updates: Partial<Omit<KnowledgeItem, 'id'>>
 ): Promise<KnowledgeItem> {
-  try {
-    // Get existing item first
-    const existing = await getKnowledgeItem(id);
-    if (!existing) {
-      throw new Error(`Knowledge item with id ${id} not found`);
-    }
-
-    // Merge updates with existing values
-    const updatedItem = {
-      type: updates.type ?? existing.type,
-      title: updates.title ?? existing.title,
-      content: updates.content ?? existing.content,
-      tags: updates.tags ?? existing.tags,
-      embedding: updates.embedding ?? existing.embedding,
-    };
-
-    const rows = await sql`
-      UPDATE knowledge_base
-      SET 
-        type = ${updatedItem.type},
-        title = ${updatedItem.title},
-        content = ${updatedItem.content},
-        tags = ${updatedItem.tags || []},
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${id}::uuid
-      RETURNING id::text as id, type, title, content, tags
-    `;
-
-    if (rows.length === 0) {
-      throw new Error(`Knowledge item with id ${id} not found`);
-    }
-
-    const row = rows[0] as any;
-    return {
-      id: row.id,
-      type: row.type as KnowledgeItem['type'],
-      title: row.title,
-      content: row.content,
-      tags: row.tags || [],
-      embedding: row.embedding ? Array.from(row.embedding) : undefined,
-    };
-  } catch (error) {
-    console.error('Error updating knowledge item:', error);
-    throw error;
+  const items = readStorage();
+  const index = items.findIndex(item => item.id === id);
+  if (index === -1) {
+    throw new Error(`Knowledge item with id ${id} not found`);
   }
+  items[index] = { ...items[index], ...updates };
+  writeStorage(items);
+  return items[index];
 }
 
 /**
  * Delete a knowledge base item
  */
 export async function deleteKnowledgeItem(id: string): Promise<void> {
-  try {
-    await sql`
-      DELETE FROM knowledge_base
-      WHERE id = ${id}::uuid
-    `;
-  } catch (error) {
-    console.error('Error deleting knowledge item:', error);
-    throw error;
-  }
+  const items = readStorage();
+  const filtered = items.filter(item => item.id !== id);
+  writeStorage(filtered);
 }
 
 /**
@@ -207,36 +121,39 @@ export async function searchKnowledgeItems(
   query: string,
   limit: number = 10
 ): Promise<KnowledgeItem[]> {
-  try {
-    const rows = await sql`
-      SELECT 
-        id::text as id,
-        type,
-        title,
-        content,
-        tags,
-        ts_rank(to_tsvector('english', title || ' ' || content), plainto_tsquery('english', ${query})) as rank
-      FROM knowledge_base
-      WHERE 
-        to_tsvector('english', title || ' ' || content) @@ plainto_tsquery('english', ${query})
-        OR ${query} = ANY(tags)
-        OR title ILIKE ${'%' + query + '%'}
-        OR content ILIKE ${'%' + query + '%'}
-      ORDER BY rank DESC, created_at DESC
-      LIMIT ${limit}
-    `;
+  const items = readStorage();
+  const q = query.toLowerCase();
 
-    return rows.map((row: any) => ({
-      id: row.id,
-      type: row.type as KnowledgeItem['type'],
-      title: row.title,
-      content: row.content,
-      tags: row.tags || [],
-      embedding: undefined, // Embeddings can be added later if pgvector is enabled
-    }));
-  } catch (error) {
-    console.error('Error searching knowledge items:', error);
-    throw error;
-  }
+  // Score each item by relevance
+  const scored = items.map(item => {
+    let score = 0;
+    const title = item.title.toLowerCase();
+    const content = item.content.toLowerCase();
+    const tags = item.tags.map(t => t.toLowerCase());
+
+    // Exact tag match = highest
+    if (tags.includes(q)) score += 10;
+    // Tag partial match
+    tags.forEach(tag => { if (tag.includes(q) || q.includes(tag)) score += 5; });
+    // Title match
+    if (title.includes(q)) score += 8;
+    // Content match
+    if (content.includes(q)) score += 3;
+    // Word-level matching
+    const words = q.split(/\s+/).filter(w => w.length > 2);
+    words.forEach(word => {
+      if (title.includes(word)) score += 2;
+      if (content.includes(word)) score += 1;
+      tags.forEach(tag => { if (tag.includes(word)) score += 3; });
+    });
+
+    return { item, score };
+  });
+
+  return scored
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(s => s.item);
 }
 

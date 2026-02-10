@@ -27,8 +27,8 @@ export class LatexResumeParser {
       const line = lines[i];
       const trimmed = line.trim();
 
-      // Check for section start
-      const sectionMatch = trimmed.match(/^\\section\{([^}]+)\}/);
+      // Check for section start (supports both \section{} and \section*{})
+      const sectionMatch = trimmed.match(/^\\section\*?\{([^}]+)\}/);
       if (sectionMatch) {
         // Save previous section
         if (currentSection) {

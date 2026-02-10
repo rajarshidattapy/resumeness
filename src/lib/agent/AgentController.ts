@@ -19,7 +19,7 @@ export class AgentController {
   constructor(config: Partial<AgentConfig> = {}) {
     this.config = {
       maxRetries: 3,
-      timeoutPerStep: 30000, // 30 seconds per step
+      timeoutPerStep: 300000, // 5 minutes per step (LLM calls are sequential)
       atsTargetScore: 70,
       keywordCoverageThreshold: 0.7,
       verificationStrictness: 'medium',
@@ -40,13 +40,37 @@ export class AgentController {
     currentLatex: string,
     knowledgeBase: KnowledgeItem[]
   ): Promise<OptimizationResult> {
-    const sessionId = crypto.randomUUID();
+    const sessionId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const startTime = Date.now();
 
     console.log('🚀 AgentController: Starting optimization process');
     console.log('📄 Input LaTeX length:', currentLatex.length);
     console.log('📋 Job description length:', jobDescription.length);
     console.log('📚 Knowledge base items:', knowledgeBase.length);
+
+    // Validate job description - need meaningful content to optimize
+    const MIN_JD_LENGTH = 50;
+    if (jobDescription.trim().length < MIN_JD_LENGTH) {
+      console.warn('⚠️ Job description too short for meaningful optimization');
+      return {
+        sessionId,
+        originalResume: currentLatex,
+        optimizedResume: currentLatex,
+        atsScoreBefore: 0,
+        atsScoreAfter: 0,
+        changesApplied: [{
+          section: 'Input Validation',
+          changeType: 'content',
+          description: `Job description is too short (${jobDescription.trim().length} characters). Please provide a detailed job description with at least ${MIN_JD_LENGTH} characters including required skills, responsibilities, and qualifications.`,
+          impact: 'Cannot optimize without adequate job context',
+          confidence: 1.0,
+        }],
+        executionTime: Date.now() - startTime,
+        verificationPassed: false,
+      };
+    }
 
     // Initialize session
     const initialState = this.memoryManager.initializeSession(sessionId);
@@ -73,6 +97,9 @@ export class AgentController {
       console.log('✍️ Step 4: Rewrite Phase');
       const rewriteResults = await this.executeRewritePhase(currentLatex, retrievalResults, planningResults);
       console.log('✅ Rewrite completed:', rewriteResults.sectionsModified?.length || 0, 'sections modified');
+      console.log('📏 Rewrite result latex length:', rewriteResults.rewrittenLatex?.length);
+      console.log('📏 Original latex length:', currentLatex.length);
+      console.log('🔄 Content changed:', rewriteResults.rewrittenLatex !== currentLatex);
 
       console.log('⚡ Step 5: Optimization Phase');
       const optimizationResults = await this.executeOptimizationPhase(rewriteResults, planningResults);
@@ -301,11 +328,13 @@ export class AgentController {
       // Update state to current step
       this.memoryManager.updateState({ currentStep: step });
 
-      // Execute the operation with timeout
+      // Execute the operation with timeout (clean up timer on success)
+      const { promise: timeoutPromise, cancel: cancelTimeout } = this.createTimeoutPromise(this.config.timeoutPerStep);
       const result = await Promise.race([
         operation(),
-        this.createTimeoutPromise(this.config.timeoutPerStep)
+        timeoutPromise
       ]);
+      cancelTimeout();
 
       const duration = Date.now() - stepStartTime;
 
@@ -362,7 +391,7 @@ export class AgentController {
     if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
       return ErrorType.NETWORK_ERROR;
     }
-    if (errorMessage.includes('timeout')) {
+    if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
       return ErrorType.TIMEOUT_ERROR;
     }
     if (errorMessage.includes('latex') || errorMessage.includes('syntax')) {
@@ -382,12 +411,14 @@ export class AgentController {
   }
 
   /**
-   * Create a timeout promise
+   * Create a timeout promise with cancel handle to prevent timer leaks
    */
-  private createTimeoutPromise(timeout: number): Promise<never> {
-    return new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout);
+  private createTimeoutPromise(timeout: number): { promise: Promise<never>; cancel: () => void } {
+    let timer: ReturnType<typeof setTimeout>;
+    const promise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout);
     });
+    return { promise, cancel: () => clearTimeout(timer!) };
   }
 
   /**

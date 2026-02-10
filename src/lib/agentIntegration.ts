@@ -21,7 +21,7 @@ export class ResumeAgentIntegration {
   constructor(progressCallback?: ProgressCallback) {
     this.agentController = new AgentController({
       maxRetries: 3,
-      timeoutPerStep: 30000,
+      timeoutPerStep: 300000,
       atsTargetScore: 70,
       keywordCoverageThreshold: 0.7,
       verificationStrictness: 'medium',

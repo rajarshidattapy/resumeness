@@ -1,20 +1,39 @@
-import { useCallback, useState, useEffect } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import { motion } from 'framer-motion';
-import { Code, Eye, Download, RotateCcw, Maximize2, Loader2, FileDown } from 'lucide-react';
+import { useCallback, useState, useEffect, useRef } from 'react';
+import CodeMirror, { ReactCodeMirrorRef } from '@uiw/react-codemirror';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Code, Eye, Download, RotateCcw, Maximize2, Loader2, FileDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useResumeStore } from '@/stores/useResumeStore';
+import { useResumeStore, setEditorViewRef } from '@/stores/useResumeStore';
 import { compileLatexToPdf, downloadPdf } from '@/lib/latexCompiler';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 
 export const LaTeXEditor = () => {
-  const { latexContent, setLatexContent, activePanel, setActivePanel, addVersion } = useResumeStore();
+  const { latexContent, setLatexContent, activePanel, setActivePanel, addVersion, isTypewriting } = useResumeStore();
   const [isCompiling, setIsCompiling] = useState(false);
   const { toast } = useToast();
+  const editorRef = useRef<ReactCodeMirrorRef>(null);
+  const prevContentRef = useRef(latexContent);
+
+  // Register the EditorView ref for external content dispatch (module-level, no re-renders)
+  useEffect(() => {
+    const view = editorRef.current?.view;
+    if (view) {
+      setEditorViewRef(view);
+    }
+    return () => setEditorViewRef(null);
+  }, []); // only on mount/unmount
+
+  // Track when content changes externally (e.g., from AI) vs from user typing
+  useEffect(() => {
+    if (latexContent !== prevContentRef.current) {
+      prevContentRef.current = latexContent;
+    }
+  }, [latexContent]);
 
   const handleChange = useCallback((value: string) => {
+    prevContentRef.current = value; // Track that this change came from typing
     setLatexContent(value);
   }, [setLatexContent]);
 
@@ -69,7 +88,27 @@ export const LaTeXEditor = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-editor-bg">
+    <div className="flex flex-col h-full bg-editor-bg relative">
+      {/* Typewriting Indicator Overlay */}
+      <AnimatePresence>
+        {isTypewriting && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-r from-primary/20 via-primary/30 to-primary/20 px-4 py-2 flex items-center justify-center gap-2 border-b border-primary/30"
+          >
+            <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+            <span className="text-sm font-medium text-primary">AI is updating your resume...</span>
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Editor Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-card/50">
         <div className="flex items-center gap-2">
@@ -138,6 +177,7 @@ export const LaTeXEditor = () => {
             className="h-full"
           >
             <CodeMirror
+              ref={editorRef}
               value={latexContent}
               height="100%"
               theme="light"
@@ -165,22 +205,73 @@ const ResumePreview = ({ latex }: { latex: string }) => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pdfUrlRef = useRef<string | null>(null);
   const { toast } = useToast();
 
-  // Compile LaTeX to PDF
-  const compileToPdf = useCallback(async () => {
+  // Compile LaTeX to PDF when latex content changes
+  useEffect(() => {
+    let isCancelled = false;
+    
+    const compileToPdf = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        console.log('Compiling LaTeX, content length:', latex.length);
+        const result = await compileLatexToPdf(latex);
+
+        if (isCancelled) return;
+
+        if (result.success && result.pdfUrl) {
+          setPdfUrl(prevUrl => {
+            // Revoke previous URL to avoid memory leaks
+            if (prevUrl) {
+              URL.revokeObjectURL(prevUrl);
+            }
+            pdfUrlRef.current = result.pdfUrl!;
+            return result.pdfUrl!;
+          });
+        } else {
+          setError(result.error || 'Failed to compile LaTeX');
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setError(err instanceof Error ? err.message : 'Compilation error');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    compileToPdf();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [latex]);
+
+  // Cleanup PDF URL on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfUrlRef.current) {
+        URL.revokeObjectURL(pdfUrlRef.current);
+      }
+    };
+  }, []);
+
+  const handleRetry = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-
     try {
       const result = await compileLatexToPdf(latex);
-
       if (result.success && result.pdfUrl) {
-        // Revoke previous URL to avoid memory leaks
-        if (pdfUrl) {
-          URL.revokeObjectURL(pdfUrl);
-        }
-        setPdfUrl(result.pdfUrl);
+        setPdfUrl(prevUrl => {
+          if (prevUrl) URL.revokeObjectURL(prevUrl);
+          pdfUrlRef.current = result.pdfUrl!;
+          return result.pdfUrl!;
+        });
       } else {
         setError(result.error || 'Failed to compile LaTeX');
       }
@@ -189,21 +280,7 @@ const ResumePreview = ({ latex }: { latex: string }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [latex, pdfUrl]);
-
-  // Compile on mount and when latex changes
-  useEffect(() => {
-    compileToPdf();
   }, [latex]);
-
-  // Cleanup PDF URL on unmount
-  useEffect(() => {
-    return () => {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
-      }
-    };
-  }, [pdfUrl]);
 
   return (
     <motion.div
@@ -230,7 +307,7 @@ const ResumePreview = ({ latex }: { latex: string }) => {
             </pre>
             <div className="mt-4 flex gap-2">
               <Button
-                onClick={compileToPdf}
+                onClick={handleRetry}
                 variant="outline"
               >
                 <RotateCcw className="w-4 h-4 mr-2" />

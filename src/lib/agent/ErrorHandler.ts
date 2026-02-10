@@ -54,8 +54,10 @@ export class ErrorHandler {
         return attemptCount < 2; // Limited retries for these
       
       case ErrorType.KNOWLEDGE_BASE_EMPTY:
+        return false; // No retries
+      
       case ErrorType.CRITICAL_ERROR:
-        return false; // No retries for these
+        return attemptCount < 1; // Allow one retry for critical errors
       
       default:
         return true;

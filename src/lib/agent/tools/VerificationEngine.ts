@@ -188,14 +188,22 @@ export class VerificationEngine {
         });
       }
 
-      // Check for malformed commands
-      const malformedCommands = line.match(/\\[a-zA-Z]+[^a-zA-Z\s\{\[\*]/g);
-      if (malformedCommands) {
-        errors.push({
-          line: lineNumber,
-          message: `Malformed commands: ${malformedCommands.join(', ')}`,
-          type: 'command',
-        });
+      // Check for malformed commands (but exclude known valid patterns)
+      // Allow: fontawesome commands (fa*), commands followed by }, ], ), \, or end of line
+      const potentialMalformed = line.match(/\\[a-zA-Z]+[^a-zA-Z\s\{\[\*\}\]\)\\,.:;!?~\-]/g);
+      if (potentialMalformed) {
+        // Filter out known valid command patterns (fontawesome, etc.)
+        const knownValidPrefixes = ['\\fa', '\\textbf', '\\textit', '\\href', '\\url', '\\item'];
+        const actualMalformed = potentialMalformed.filter(cmd => 
+          !knownValidPrefixes.some(prefix => cmd.startsWith(prefix))
+        );
+        if (actualMalformed.length > 0) {
+          errors.push({
+            line: lineNumber,
+            message: `Malformed commands: ${actualMalformed.join(', ')}`,
+            type: 'command',
+          });
+        }
       }
 
       // Check for missing required packages
@@ -613,7 +621,14 @@ export class VerificationEngine {
         
       case 'command':
         // Fix malformed commands by adding proper spacing
-        fixedLatex = latex.replace(/\\([a-zA-Z]+)([^a-zA-Z\s\{\[\*])/g, '\\$1 $2');
+        // But skip fontawesome commands (fa*) and other known valid patterns
+        fixedLatex = latex.replace(/\\([a-zA-Z]+)([^a-zA-Z\s\{\[\*\}\]\)\\,.:;!?~\-])/g, (match, cmd, char) => {
+          // Don't "fix" fontawesome commands - they're valid
+          if (cmd.startsWith('fa')) {
+            return match;
+          }
+          return `\\${cmd} ${char}`;
+        });
         fixed = true;
         break;
     }
