@@ -12,13 +12,23 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 
-const OLLAMA_BASE_URL = import.meta.env.VITE_OLLAMA_BASE_URL || 'http://localhost:11434';
+// Use Flask backend proxy to avoid CORS issues with Ollama
+const OLLAMA_PROXY_URL = import.meta.env.VITE_OLLAMA_PROXY_URL || 'http://localhost:5000/api/ollama';
+const OLLAMA_DIRECT_URL = import.meta.env.VITE_OLLAMA_BASE_URL || 'http://localhost:11434';
 
-// Check if Ollama is available
+// Check if Ollama is available (try proxy first, then direct)
 const checkOllamaAvailability = async (): Promise<boolean> => {
+  // Try the Flask proxy first
   try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
-    return response.ok;
+    const proxyResponse = await fetch(`${OLLAMA_PROXY_URL}/tags`, { signal: AbortSignal.timeout(2000) });
+    if (proxyResponse.ok) return true;
+  } catch {
+    // Proxy not available, try direct
+  }
+  // Fallback: check Ollama directly
+  try {
+    const directResponse = await fetch(`${OLLAMA_DIRECT_URL}/api/tags`, { signal: AbortSignal.timeout(2000) });
+    return directResponse.ok;
   } catch {
     return false;
   }
@@ -97,7 +107,7 @@ const MessageBubble = ({ message }: { message: Message }) => {
           <ReactMarkdown>{message.content}</ReactMarkdown>
         </div>
         <span className="text-[10px] opacity-50 mt-2 block">
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
     </motion.div>
@@ -143,7 +153,9 @@ export const ChatPanel = () => {
     addMessage, 
     isAgentThinking, 
     setIsAgentThinking,
-    setLatexContent,
+    forceSetLatexContent,
+    setLatexContentWithTypewriter,
+    isTypewriting,
     latexContent,
     setAtsScore,
     setMatchedKeywords,
@@ -214,8 +226,10 @@ export const ChatPanel = () => {
       );
 
       if (result.success) {
-        // Update the editor with optimized content
-        setLatexContent(result.optimizedLatex);
+        // Version already saved before optimization started
+        
+        // Update the editor with optimized content directly
+        forceSetLatexContent(result.optimizedLatex);
         
         // Update ATS score
         setAtsScore(result.atsScoreAfter);
@@ -232,11 +246,38 @@ export const ChatPanel = () => {
         });
         
       } else {
-        // Show failure message but preserve original
-        addMessage({ 
-          role: 'assistant', 
-          content: `⚠️ **Optimization encountered issues**\n\n**Current ATS Match: ${currentAtsResult.score}%**\n\nThe original resume has been preserved. Issues encountered:\n${result.changes.join('\n')}\n\n**Suggestions:**\n• Ensure the job description is complete and detailed\n• Add more relevant experience to your knowledge base\n• Try with a more specific job description\n• Check that Ollama is running with the GLM-4.7 model` 
-        });
+        // Check if we have optimized content even though verification failed
+        const hasChanges = result.optimizedLatex && result.optimizedLatex !== latexContent;
+        
+        if (hasChanges) {
+          // Save current version before updating
+          addVersion({
+            latex: latexContent,
+            description: 'Before AI optimization (partial)',
+          });
+          
+          // Still update the editor with the optimized content directly
+          forceSetLatexContent(result.optimizedLatex);
+          
+          // Update ATS score if available
+          if (result.atsScoreAfter > 0) {
+            setAtsScore(result.atsScoreAfter);
+          }
+          
+          const newAtsResult = calculateATSScore(result.optimizedLatex, userMessage);
+          setMatchedKeywords(newAtsResult.matched);
+          
+          addMessage({ 
+            role: 'assistant', 
+            content: `⚠️ **Optimization completed with warnings**\n\n📊 **Results:**\n• **ATS Score:** ${result.atsScoreBefore}% → ${result.atsScoreAfter}%\n• **Execution Time:** ${Math.round(result.executionTime / 1000)}s\n\n**Notes:**\n${result.changes.join('\n')}\n\n✨ **The editor has been updated with optimizations.** Review the changes and adjust as needed. Previous version saved in Version History.` 
+          });
+        } else {
+          // No changes were made
+          addMessage({ 
+            role: 'assistant', 
+            content: `⚠️ **Optimization encountered issues**\n\n**Current ATS Match: ${currentAtsResult.score}%**\n\nThe original resume has been preserved. Issues encountered:\n${result.changes.join('\n')}\n\n**Suggestions:**\n• Ensure the job description is complete and detailed\n• Add more relevant experience to your knowledge base\n• Try with a more specific job description\n• Check that Ollama is running with the GLM-4.7 model` 
+          });
+        }
       }
       
     } catch (error) {

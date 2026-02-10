@@ -1,0 +1,31 @@
+Senior Software Engineer - Full Stack
+
+About the Role:
+We're looking for a Senior Software Engineer to join our platform team. You'll be building scalable microservices and customer-facing features for our growing user base of 10M+ users.
+
+Requirements:
+- 5+ years of experience in software development
+- Strong proficiency in React, TypeScript, and Node.js
+- Experience with PostgreSQL, MongoDB, or other databases
+- Knowledge of AWS services (EC2, S3, Lambda, RDS)
+- Experience with Docker and Kubernetes
+- Familiarity with CI/CD pipelines (GitHub Actions, Jenkins)
+- Understanding of RESTful API design and GraphQL
+
+Nice to Have:
+- Experience with microservices architecture
+- Knowledge of Terraform or other IaC tools
+- Experience with real-time systems and WebSocket
+- Background in performance optimization
+
+Responsibilities:
+- Design and implement scalable backend services
+- Collaborate with product and design teams
+- Mentor junior engineers and conduct code reviews
+- Participate in on-call rotation and incident response
+- Contribute to technical architecture decisions
+
+Benefits:
+- Competitive salary and equity
+- Health, dental, and vision insurance
+- Flexible remote work policy

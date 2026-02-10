@@ -49,15 +49,12 @@ class SearchKnowledgeBaseTool extends Tool {
 
   async _call(query: string): Promise<string> {
     try {
-      // Try database search first if available
-      const dbUrl = import.meta.env.VITE_NEON_DATABASE_URL;
-      if (dbUrl) {
-        const { searchKnowledgeItems } = await import('@/lib/db/knowledgeBaseDb');
-        const relevant = await searchKnowledgeItems(query, 5);
-        if (relevant.length > 0) {
-          return `Relevant knowledge base items:
+      // Search the localStorage-backed knowledge base
+      const { searchKnowledgeItems } = await import('@/lib/db/knowledgeBaseDb');
+      const relevant = await searchKnowledgeItems(query, 5);
+      if (relevant.length > 0) {
+        return `Relevant knowledge base items:
 ${relevant.map(item => `- ${item.title} (${item.type}): ${item.content}`).join('\n')}`;
-        }
       }
       
       // Fallback to in-memory search

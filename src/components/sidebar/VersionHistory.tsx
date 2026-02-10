@@ -60,7 +60,7 @@ export const VersionHistory = () => {
                         {version.description}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {version.timestamp.toLocaleString()}
+                        {new Date(version.timestamp).toLocaleString()}
                       </p>
                     </div>
                     {version.atsScore && (

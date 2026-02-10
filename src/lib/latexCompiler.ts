@@ -23,9 +23,9 @@ function validateLatex(latexContent: string): { valid: boolean; error?: string }
     return { valid: false, error: 'LaTeX document must contain \\end{document}' };
   }
 
-  // Check for balanced braces (basic check)
-  const openBraces = (latexContent.match(/\{/g) || []).length;
-  const closeBraces = (latexContent.match(/\}/g) || []).length;
+  // Check for balanced braces (basic check) — exclude escaped braces like \{ and \}
+  const openBraces = (latexContent.match(/(?<!\\)\{/g) || []).length;
+  const closeBraces = (latexContent.match(/(?<!\\)\}/g) || []).length;
   if (openBraces !== closeBraces) {
     return { 
       valid: false, 

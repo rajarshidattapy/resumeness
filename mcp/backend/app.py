@@ -1,16 +1,20 @@
+#type: ignore
 import os
 import json
 import openai
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 import subprocess
 from typing import List, Optional
 from dotenv import load_dotenv
+import requests
 
 # Serve static frontend files from ../frontend
 BASE_DIR = os.path.dirname(__file__)
 FRONTEND_DIR = os.path.normpath(os.path.join(BASE_DIR, '..', 'frontend'))
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path='')
+CORS(app)  # Enable CORS for all routes
 
 # Load KB using an absolute path so the app can be started from repo root
 KB_PATH = os.path.join(BASE_DIR, 'kb.json')
@@ -109,6 +113,11 @@ def generate():
         return jsonify({'error': str(e)}), 500
 
     latex = _strip_md_fences(assistant)
+    print("\n" + "="*60)
+    print("GENERATED LATEX:")
+    print("="*60)
+    print(latex)
+    print("="*60 + "\n")
     return jsonify({'latex': latex, 'synced': False, 'message': 'Generated LaTeX (not synced)'}), 200
 
 
@@ -185,6 +194,12 @@ def update_overleaf():
     else:
         modified_latex = data.get('latex') or ''
 
+    print("\n" + "="*60)
+    print("GENERATED LATEX (update_overleaf):")
+    print("="*60)
+    print(modified_latex)
+    print("="*60 + "\n")
+
     # If an Overleaf git path is configured, attempt to write & push. Otherwise return LaTeX.
     if overleaf_link:
         # For server-side sync, require a local clone path be configured
@@ -223,6 +238,17 @@ def update_overleaf():
 
     # No sync requested / possible — return LaTeX for user to paste
     return jsonify({'latex': modified_latex, 'synced': False})
+
+
+
+@app.route('/api/ollama/<path:path>', methods=['GET', 'POST', 'OPTIONS'])
+def ollama_proxy(path):
+    ollama_url = f'http://localhost:11434/api/{path}'
+    if request.method == 'GET':
+        resp = requests.get(ollama_url)
+    else:
+        resp = requests.post(ollama_url, json=request.get_json())
+    return jsonify(resp.json()), resp.status_code
 
 
 @app.route('/')

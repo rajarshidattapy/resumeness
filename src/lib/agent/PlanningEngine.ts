@@ -1,305 +1,115 @@
-// Planning Engine - Creates execution plans before acting
+// Planning Engine - Uses LLM to create execution plans
 import { ExecutionPlan, SkillCategory, SeniorityLevel, AgentStep } from './types';
+import { createChatOllama } from '@/lib/langchain-openrouter';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
 export class PlanningEngine {
-  
+  private llm = createChatOllama({ temperature: 0.3 });
+
   /**
-   * Create an execution plan based on job description analysis
+   * Create an execution plan by asking the LLM to analyse the JD
    */
   async createExecutionPlan(jobDescription: string): Promise<ExecutionPlan> {
-    const analysis = await this.analyzeJobDescription(jobDescription);
-    
-    const plan: ExecutionPlan = {
-      targetRole: analysis.roleTitle,
-      requiredSkills: analysis.skills,
-      atsKeywords: analysis.keywords,
-      seniorityLevel: analysis.seniority,
-      industryTerms: analysis.industryTerms,
-      optimizationStrategy: this.determineOptimizationStrategy(analysis),
-      estimatedDuration: this.estimateExecutionTime(analysis),
-    };
+    console.log('🧠 PlanningEngine: Invoking LLM for execution plan');
 
-    return plan;
-  }
+    const systemPrompt = `You are an expert resume strategist. Analyse the following job description and return a JSON object (no markdown fences) with exactly this structure:
 
-  /**
-   * Update plan based on step results
-   */
-  async updatePlan(step: AgentStep, results: any, currentPlan: ExecutionPlan): Promise<ExecutionPlan> {
-    const updatedPlan = { ...currentPlan };
+{
+  "targetRole": "<exact job title>",
+  "requiredSkills": [
+    { "type": "hard", "skills": ["Skill1", "Skill2"], "priority": 1 },
+    { "type": "soft", "skills": ["Skill1"], "priority": 2 }
+  ],
+  "atsKeywords": ["keyword1", "keyword2", "...at least 15 keywords"],
+  "seniorityLevel": "<entry|mid|senior|executive>",
+  "industryTerms": ["term1", "term2"],
+  "optimizationStrategy": "<one sentence describing the best approach>",
+  "estimatedDuration": 30000
+}
 
-    switch (step) {
-      case AgentStep.ANALYZING:
-        // Update plan based on deeper analysis
-        if (results.additionalKeywords) {
-          updatedPlan.atsKeywords = [...updatedPlan.atsKeywords, ...results.additionalKeywords];
-        }
-        if (results.refinedStrategy) {
-          updatedPlan.optimizationStrategy = results.refinedStrategy;
-        }
-        break;
+Rules:
+- atsKeywords must contain at least 15 keywords extracted from the JD, including technical skills, tools, frameworks, soft skills, and industry terms.
+- requiredSkills should separate hard (technical) and soft skills.
+- seniorityLevel must be exactly one of: entry, mid, senior, executive.
+- Return ONLY the JSON object, no explanation, no markdown.`;
 
-      case AgentStep.RETRIEVING:
-        // Adjust strategy based on available knowledge
-        if (results.availableContent && results.availableContent.length < 3) {
-          updatedPlan.optimizationStrategy = 'conservative'; // Less aggressive changes
-        }
-        break;
+    const result = await this.llm.invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(jobDescription),
+    ]);
 
-      case AgentStep.REWRITING:
-        // Update estimated duration based on actual rewrite complexity
-        if (results.complexity) {
-          updatedPlan.estimatedDuration = Math.max(
-            updatedPlan.estimatedDuration,
-            results.complexity * 10000 // 10 seconds per complexity point
-          );
-        }
-        break;
+    const text = typeof result.content === 'string' ? result.content : String(result.content);
+    console.log('🧠 PlanningEngine: LLM response length:', text.length);
+
+    try {
+      const parsed = this.parseJSON(text);
+      return this.normalizePlan(parsed);
+    } catch {
+      console.error('⚠️ PlanningEngine: Failed to parse LLM JSON, using fallback extraction');
+      return this.fallbackPlan(jobDescription);
     }
-
-    return updatedPlan;
   }
 
-  /**
-   * Analyze job description to extract planning information
-   */
-  private async analyzeJobDescription(jobDescription: string): Promise<{
-    roleTitle: string;
-    skills: SkillCategory[];
-    keywords: string[];
-    seniority: SeniorityLevel;
-    industryTerms: string[];
-  }> {
-    // Extract role title
-    const roleTitle = this.extractRoleTitle(jobDescription);
-    
-    // Categorize skills
-    const skills = this.categorizeSkills(jobDescription);
-    
-    // Extract ATS keywords
-    const keywords = this.extractATSKeywords(jobDescription);
-    
-    // Determine seniority level
-    const seniority = this.determineSeniorityLevel(jobDescription);
-    
-    // Identify industry terms
-    const industryTerms = this.identifyIndustryTerms(jobDescription);
+  /** Try to find the JSON object in possibly noisy LLM output */
+  private parseJSON(raw: string): any {
+    const cleaned = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('No JSON object found');
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+
+  /** Map parsed JSON into strict ExecutionPlan type */
+  private normalizePlan(raw: any): ExecutionPlan {
+    const seniorityMap: Record<string, SeniorityLevel> = {
+      entry: SeniorityLevel.ENTRY,
+      mid: SeniorityLevel.MID,
+      senior: SeniorityLevel.SENIOR,
+      executive: SeniorityLevel.EXECUTIVE,
+    };
 
     return {
-      roleTitle,
-      skills,
-      keywords,
-      seniority,
-      industryTerms,
+      targetRole: String(raw.targetRole || 'Software Professional'),
+      requiredSkills: (raw.requiredSkills || []).map((s: any) => ({
+        type: s.type === 'soft' ? 'soft' : 'hard',
+        skills: Array.isArray(s.skills) ? s.skills.map(String) : [],
+        priority: Number(s.priority) || 1,
+      })) as SkillCategory[],
+      atsKeywords: Array.isArray(raw.atsKeywords) ? raw.atsKeywords.map(String) : [],
+      seniorityLevel: seniorityMap[String(raw.seniorityLevel).toLowerCase()] ?? SeniorityLevel.MID,
+      industryTerms: Array.isArray(raw.industryTerms) ? raw.industryTerms.map(String) : [],
+      optimizationStrategy: String(raw.optimizationStrategy || 'balanced_optimization'),
+      estimatedDuration: Number(raw.estimatedDuration) || 30000,
     };
   }
 
-  /**
-   * Extract role title from job description
-   */
-  private extractRoleTitle(jobDescription: string): string {
-    // Look for common patterns in job titles
-    const titlePatterns = [
-      /(?:job title|position|role):\s*([^\n\r]+)/i,
-      /^([^\n\r]*(?:engineer|developer|manager|analyst|designer|scientist|architect|lead|director|specialist|coordinator|consultant)[^\n\r]*)/im,
-      /hiring\s+(?:for\s+)?([^\n\r]+)/i,
-      /seeking\s+(?:a\s+)?([^\n\r]+)/i,
-    ];
-
-    for (const pattern of titlePatterns) {
-      const match = jobDescription.match(pattern);
-      if (match && match[1]) {
-        return match[1].trim().replace(/[^\w\s-]/g, '').trim();
-      }
-    }
-
-    // Fallback: look for common job titles
-    const commonTitles = [
-      'Software Engineer', 'Frontend Developer', 'Backend Developer', 'Full Stack Developer',
-      'Data Scientist', 'Machine Learning Engineer', 'DevOps Engineer', 'Product Manager',
-      'UI/UX Designer', 'Business Analyst', 'Project Manager', 'Technical Lead',
-      'Engineering Manager', 'Senior Developer', 'Principal Engineer'
-    ];
-
-    for (const title of commonTitles) {
-      if (jobDescription.toLowerCase().includes(title.toLowerCase())) {
-        return title;
-      }
-    }
-
-    return 'Software Professional'; // Default fallback
+  /** Minimal fallback if LLM response is unparseable */
+  private fallbackPlan(jd: string): ExecutionPlan {
+    return {
+      targetRole: 'Software Professional',
+      requiredSkills: [],
+      atsKeywords: this.quickExtractKeywords(jd),
+      seniorityLevel: SeniorityLevel.MID,
+      industryTerms: [],
+      optimizationStrategy: 'balanced_optimization',
+      estimatedDuration: 30000,
+    };
   }
 
-  /**
-   * Categorize skills as hard or soft skills
-   */
-  private categorizeSkills(jobDescription: string): SkillCategory[] {
-    const hardSkillsPatterns = [
-      // Programming languages
-      /\b(?:JavaScript|TypeScript|Python|Java|C\+\+|C#|Go|Rust|PHP|Ruby|Swift|Kotlin|Scala)\b/gi,
-      // Frameworks and libraries
-      /\b(?:React|Vue|Angular|Node\.js|Express|Django|Flask|Spring|Laravel|Rails)\b/gi,
-      // Databases
-      /\b(?:MySQL|PostgreSQL|MongoDB|Redis|Elasticsearch|Cassandra|DynamoDB)\b/gi,
-      // Cloud and DevOps
-      /\b(?:AWS|Azure|GCP|Docker|Kubernetes|Jenkins|GitLab|Terraform|Ansible)\b/gi,
-      // Tools and technologies
-      /\b(?:Git|JIRA|Confluence|Figma|Sketch|Photoshop|Linux|Windows|macOS)\b/gi,
-    ];
-
-    const softSkillsPatterns = [
-      /\b(?:leadership|communication|teamwork|collaboration|problem[- ]solving)\b/gi,
-      /\b(?:analytical|critical thinking|creativity|adaptability|time management)\b/gi,
-      /\b(?:self[- ]motivated|detail[- ]oriented|innovative|strategic|cross[- ]functional)\b/gi,
-    ];
-
-    const hardSkills: string[] = [];
-    const softSkills: string[] = [];
-
-    // Extract hard skills
-    hardSkillsPatterns.forEach(pattern => {
-      const matches = jobDescription.match(pattern) || [];
-      hardSkills.push(...matches.map((m: string) => m.trim()));
-    });
-
-    // Extract soft skills
-    softSkillsPatterns.forEach(pattern => {
-      const matches = jobDescription.match(pattern) || [];
-      softSkills.push(...matches.map((m: string) => m.trim()));
-    });
-
-    return [
-      {
-        type: 'hard' as const,
-        skills: [...new Set(hardSkills)], // Remove duplicates
-        priority: 1, // High priority for hard skills
-      },
-      {
-        type: 'soft' as const,
-        skills: [...new Set(softSkills)], // Remove duplicates
-        priority: 2, // Lower priority for soft skills
-      },
-    ].filter(category => category.skills.length > 0);
+  private quickExtractKeywords(jd: string): string[] {
+    const kw = jd.match(/\b(?:JavaScript|TypeScript|Python|Java|React|Vue|Angular|Node\.js|AWS|Docker|Kubernetes|SQL|MongoDB|PostgreSQL|GraphQL|REST|API|CI\/CD|Git|Agile|Scrum|Machine Learning|DevOps|Microservices|Cloud)\b/gi) || [];
+    return [...new Set(kw.map(k => k.toLowerCase()))];
   }
 
-  /**
-   * Extract ATS keywords from job description
-   */
-  private extractATSKeywords(jobDescription: string): string[] {
-    const keywords: Set<string> = new Set();
-
-    // Technical keywords
-    const techKeywords = jobDescription.match(/\b(?:JavaScript|TypeScript|Python|Java|C\+\+|React|Vue|Angular|Node\.js|AWS|GCP|Azure|Docker|Kubernetes|SQL|NoSQL|MongoDB|PostgreSQL|Redis|GraphQL|REST|API|CI\/CD|Git|Agile|Scrum|Machine Learning|AI|ML|Data Science|DevOps|Frontend|Backend|Full-?Stack|Microservices|Cloud|SaaS|B2B|B2C)\b/gi) || [];
-    techKeywords.forEach(keyword => keywords.add(keyword.toLowerCase()));
-
-    // Role-specific keywords
-    const roleKeywords = jobDescription.match(/\b(?:Software Engineer|Developer|Data Scientist|ML Engineer|Full Stack|Backend|Frontend|DevOps|Engineering Manager|Product Manager|Designer|Analyst)\b/gi) || [];
-    roleKeywords.forEach(keyword => keywords.add(keyword.toLowerCase()));
-
-    // Industry terms
-    const industryKeywords = jobDescription.match(/\b(?:fintech|healthcare|e-commerce|startup|enterprise|SaaS|B2B|B2C|mobile|web|cloud|AI|blockchain|IoT)\b/gi) || [];
-    industryKeywords.forEach(keyword => keywords.add(keyword.toLowerCase()));
-
-    // Soft skills
-    const softKeywords = jobDescription.match(/\b(?:leadership|communication|problem-solving|analytical|collaborative|self-motivated|detail-oriented|innovative|strategic|cross-functional)\b/gi) || [];
-    softKeywords.forEach(keyword => keywords.add(keyword.toLowerCase()));
-
-    return Array.from(keywords);
-  }
-
-  /**
-   * Determine seniority level from job description
-   */
-  private determineSeniorityLevel(jobDescription: string): SeniorityLevel {
-    const jdLower = jobDescription.toLowerCase();
-
-    // Check for executive level indicators
-    if (jdLower.includes('director') || jdLower.includes('vp') || jdLower.includes('chief') || 
-        jdLower.includes('head of') || jdLower.includes('executive')) {
-      return SeniorityLevel.EXECUTIVE;
+  /** Update plan based on step results */
+  async updatePlan(step: AgentStep, results: any, currentPlan: ExecutionPlan): Promise<ExecutionPlan> {
+    const updatedPlan = { ...currentPlan };
+    if (step === AgentStep.ANALYZING && results.additionalKeywords) {
+      updatedPlan.atsKeywords = [...new Set([...updatedPlan.atsKeywords, ...results.additionalKeywords])];
     }
-
-    // Check for senior level indicators
-    if (jdLower.includes('senior') || jdLower.includes('lead') || jdLower.includes('principal') ||
-        jdLower.includes('staff') || jdLower.includes('architect') || 
-        jdLower.match(/\b(?:5|6|7|8|9|10)\+?\s*years?\b/)) {
-      return SeniorityLevel.SENIOR;
+    if (step === AgentStep.ANALYZING && results.refinedStrategy) {
+      updatedPlan.optimizationStrategy = results.refinedStrategy;
     }
-
-    // Check for entry level indicators
-    if (jdLower.includes('junior') || jdLower.includes('entry') || jdLower.includes('graduate') ||
-        jdLower.includes('intern') || jdLower.includes('new grad') ||
-        jdLower.match(/\b(?:0|1|2)\+?\s*years?\b/)) {
-      return SeniorityLevel.ENTRY;
-    }
-
-    // Default to mid-level
-    return SeniorityLevel.MID;
-  }
-
-  /**
-   * Identify industry-specific terms
-   */
-  private identifyIndustryTerms(jobDescription: string): string[] {
-    const industryTerms: Set<string> = new Set();
-
-    // Financial services
-    const financeTerms = jobDescription.match(/\b(?:fintech|banking|trading|payments|blockchain|cryptocurrency|compliance|risk management|KYC|AML)\b/gi) || [];
-    financeTerms.forEach(term => industryTerms.add(term));
-
-    // Healthcare
-    const healthTerms = jobDescription.match(/\b(?:healthcare|medical|HIPAA|EMR|EHR|telemedicine|clinical|pharmaceutical)\b/gi) || [];
-    healthTerms.forEach(term => industryTerms.add(term));
-
-    // E-commerce
-    const ecommerceTerms = jobDescription.match(/\b(?:e-commerce|retail|marketplace|inventory|fulfillment|logistics|supply chain)\b/gi) || [];
-    ecommerceTerms.forEach(term => industryTerms.add(term));
-
-    // Technology
-    const techTerms = jobDescription.match(/\b(?:SaaS|PaaS|IaaS|API|SDK|microservices|serverless|edge computing|IoT)\b/gi) || [];
-    techTerms.forEach(term => industryTerms.add(term));
-
-    return Array.from(industryTerms);
-  }
-
-  /**
-   * Determine optimization strategy based on analysis
-   */
-  private determineOptimizationStrategy(analysis: any): string {
-    const { seniority, skills, keywords } = analysis;
-
-    // High keyword density strategy for competitive roles
-    if (keywords.length > 20) {
-      return 'aggressive_keyword_optimization';
-    }
-
-    // Conservative strategy for senior roles
-    if (seniority === SeniorityLevel.SENIOR || seniority === SeniorityLevel.EXECUTIVE) {
-      return 'conservative_professional_focus';
-    }
-
-    // Skill-focused strategy for technical roles
-    const hardSkills = skills.find((s: SkillCategory) => s.type === 'hard');
-    if (hardSkills && hardSkills.skills.length > 10) {
-      return 'technical_skills_emphasis';
-    }
-
-    // Balanced strategy as default
-    return 'balanced_optimization';
-  }
-
-  /**
-   * Estimate execution time based on complexity
-   */
-  private estimateExecutionTime(analysis: any): number {
-    let baseTime = 30000; // 30 seconds base
-
-    // Add time for complex analysis
-    baseTime += analysis.keywords.length * 100; // 100ms per keyword
-    baseTime += analysis.skills.reduce((sum: number, category: SkillCategory) => sum + category.skills.length * 50, 0); // 50ms per skill
-    baseTime += analysis.industryTerms.length * 200; // 200ms per industry term
-
-    // Cap at 60 seconds
-    return Math.min(baseTime, 60000);
+    return updatedPlan;
   }
 }
