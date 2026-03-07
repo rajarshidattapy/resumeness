@@ -6,33 +6,14 @@ import { useResumeStore, Message } from '@/stores/useResumeStore';
 import { 
   optimizeResumeWithAgent,
   calculateATSScore,
+  checkBackendHealth,
 } from '@/lib/agentIntegration';
 import { AgentStep } from '@/lib/agent/types';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 
-// Use Flask backend proxy to avoid CORS issues with Ollama
-const OLLAMA_PROXY_URL = import.meta.env.VITE_OLLAMA_PROXY_URL || 'http://localhost:5000/api/ollama';
-const OLLAMA_DIRECT_URL = import.meta.env.VITE_OLLAMA_BASE_URL || 'http://localhost:11434';
 
-// Check if Ollama is available (try proxy first, then direct)
-const checkOllamaAvailability = async (): Promise<boolean> => {
-  // Try the Flask proxy first
-  try {
-    const proxyResponse = await fetch(`${OLLAMA_PROXY_URL}/tags`, { signal: AbortSignal.timeout(2000) });
-    if (proxyResponse.ok) return true;
-  } catch {
-    // Proxy not available, try direct
-  }
-  // Fallback: check Ollama directly
-  try {
-    const directResponse = await fetch(`${OLLAMA_DIRECT_URL}/api/tags`, { signal: AbortSignal.timeout(2000) });
-    return directResponse.ok;
-  } catch {
-    return false;
-  }
-};
 
 const TypingIndicator = ({ currentStep, progress }: { 
   currentStep?: AgentStep; 
@@ -141,7 +122,7 @@ const QuickActions = ({ onAction }: { onAction: (action: string) => void }) => {
 
 export const ChatPanel = () => {
   const [input, setInput] = useState('');
-  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+  const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null);
   const [currentStep, setCurrentStep] = useState<AgentStep | undefined>();
   const [progress, setProgress] = useState<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -173,8 +154,8 @@ export const ChatPanel = () => {
   }, [messages]);
 
   useEffect(() => {
-    // Check Ollama availability on component mount
-    checkOllamaAvailability().then(setOllamaAvailable);
+    // Check backend availability on component mount
+    checkBackendHealth().then(setBackendAvailable);
   }, []);
 
   const processWithAgent = async (userMessage: string) => {
@@ -183,8 +164,8 @@ export const ChatPanel = () => {
     setProgress(0);
     
     try {
-      // Check if Ollama is available
-      if (ollamaAvailable === false) {
+      // Check if backend is available
+      if (backendAvailable === false) {
         // Fallback to simulated responses
         await simulateAgentResponse(userMessage);
         return;
@@ -194,7 +175,7 @@ export const ChatPanel = () => {
       setJobDescription(userMessage);
       
       // Calculate current ATS score
-      const currentAtsResult = calculateATSScore(latexContent, userMessage);
+      const currentAtsResult = await calculateATSScore(latexContent, userMessage);
       setAtsScore(currentAtsResult.score);
       setMatchedKeywords(currentAtsResult.matched);
       
@@ -235,7 +216,7 @@ export const ChatPanel = () => {
         setAtsScore(result.atsScoreAfter);
         
         // Calculate new matched keywords
-        const newAtsResult = calculateATSScore(result.optimizedLatex, userMessage);
+        const newAtsResult = await calculateATSScore(result.optimizedLatex, userMessage);
         setMatchedKeywords(newAtsResult.matched);
 
         // Show success results
@@ -264,7 +245,7 @@ export const ChatPanel = () => {
             setAtsScore(result.atsScoreAfter);
           }
           
-          const newAtsResult = calculateATSScore(result.optimizedLatex, userMessage);
+          const newAtsResult = await calculateATSScore(result.optimizedLatex, userMessage);
           setMatchedKeywords(newAtsResult.matched);
           
           addMessage({ 
@@ -275,7 +256,7 @@ export const ChatPanel = () => {
           // No changes were made
           addMessage({ 
             role: 'assistant', 
-            content: `⚠️ **Optimization encountered issues**\n\n**Current ATS Match: ${currentAtsResult.score}%**\n\nThe original resume has been preserved. Issues encountered:\n${result.changes.join('\n')}\n\n**Suggestions:**\n• Ensure the job description is complete and detailed\n• Add more relevant experience to your knowledge base\n• Try with a more specific job description\n• Check that Ollama is running with the GLM-4.7 model` 
+            content: `⚠️ **Optimization encountered issues**\n\n**Current ATS Match: ${currentAtsResult.score}%**\n\nThe original resume has been preserved. Issues encountered:\n${result.changes.join('\n')}\n\n**Suggestions:**\n• Ensure the job description is complete and detailed\n• Add more relevant experience to your knowledge base\n• Try with a more specific job description\n• Check that the backend is running (uvicorn app.main:app)` 
           });
         }
       }
@@ -284,7 +265,7 @@ export const ChatPanel = () => {
       console.error('Agent error:', error);
       toast({
         title: 'Processing Error',
-        description: 'Failed to process your request. Please check Ollama connection.',
+        description: 'Failed to process your request. Please check backend connection.',
         variant: 'destructive',
       });
       
@@ -302,11 +283,11 @@ export const ChatPanel = () => {
     
     // Simulate the same workflow but without actual AI
     setJobDescription(userMessage);
-    const atsResult = calculateATSScore(latexContent, userMessage);
+    const atsResult = await calculateATSScore(latexContent, userMessage);
     setAtsScore(atsResult.score);
     setMatchedKeywords(atsResult.matched);
     
-    const response = `🤖 **Offline Mode - Ollama Unavailable**\n\n**Current ATS Match: ${atsResult.score}%**\n\n**Analysis Results:**\n• Matched keywords: ${atsResult.matched.slice(0, 5).join(', ')}\n• Missing keywords: ${atsResult.missing.slice(0, 5).join(', ')}\n\n**To enable full autonomous optimization:**\n1. Install Ollama from https://ollama.ai\n2. Run: \`ollama pull glm-4.7:cloud\`\n3. Ensure Ollama is running on port 11434\n\n**Manual Optimization Tips:**\n• Add missing keywords naturally to your experience\n• Use action verbs from the job description\n• Quantify achievements where possible\n• Prioritize relevant skills and technologies\n\nFor now, you can manually edit the LaTeX using this analysis.`;
+    const response = `🤖 **Offline Mode — Backend Unavailable**\n\n**Current ATS Match: ${atsResult.score}%**\n\n**Analysis Results:**\n• Matched keywords: ${atsResult.matched.slice(0, 5).join(', ')}\n• Missing keywords: ${atsResult.missing.slice(0, 5).join(', ')}\n\n**To enable full autonomous optimization:**\n1. Start the FastAPI backend: \`cd backend && uvicorn app.main:app --reload\`\n2. Ensure an LLM is configured (Ollama or OpenAI API key)\n\n**Manual Optimization Tips:**\n• Add missing keywords naturally to your experience\n• Use action verbs from the job description\n• Quantify achievements where possible\n• Prioritize relevant skills and technologies\n\nFor now, you can manually edit the LaTeX using this analysis.`;
     
     addMessage({ role: 'assistant', content: response });
   };
@@ -389,7 +370,7 @@ Preferred:
         <div>
           <h2 className="font-semibold text-foreground">Resume Agent</h2>
           <p className="text-xs text-muted-foreground">
-            {ollamaAvailable ? 'GLM-4.7 Ready' : ollamaAvailable === false ? 'Ollama unavailable' : 'Checking Ollama...'} • Paste JD to optimize
+            {backendAvailable ? 'Backend Ready' : backendAvailable === false ? 'Backend unavailable' : 'Checking backend...'} • Paste JD to optimize
           </p>
         </div>
       </div>
