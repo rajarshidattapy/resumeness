@@ -30,8 +30,6 @@ pip install -r requirements.txt
 ### 3. Configure environment
 
 ```bash
-# From project root
-cp .env.template .env
 cp backend/.env.example backend/.env
 ```
 
