@@ -6,7 +6,7 @@ AI-powered resume optimization platform. Paste a job description, and the agent 
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, CodeMirror
 - **Backend**: FastAPI, LangChain, Python
-- **LLM**: Ollama (local) or OpenAI API
+- **LLM**: OpenAI API (GPT-4o-mini)
 - **PDF**: LaTeX compilation via ytotech API
 
 ## How to Run
@@ -15,7 +15,7 @@ AI-powered resume optimization platform. Paste a job description, and the agent 
 
 - [Node.js](https://nodejs.org/) 18+
 - [Python](https://python.org/) 3.10+
-- [Ollama](https://ollama.ai/) (or an OpenAI API key)
+- An [OpenAI API key](https://platform.openai.com/api-keys)
 
 ### 2. Clone & install
 
@@ -35,17 +35,11 @@ cp .env.template .env
 cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` — pick **one** LLM provider:
+Edit `backend/.env` and set your OpenAI key:
 
-| Provider | Variables |
-|----------|-----------|
-| Ollama (default) | `OLLAMA_BASE_URL=http://localhost:11434` / `OLLAMA_MODEL=llama3` |
-| OpenAI | `OPENAI_API_KEY=sk-...` / `OPENAI_MODEL=gpt-4o-mini` |
-
-If using Ollama, pull a model first:
-
-```bash
-ollama pull llama3
+```env
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ### 4. Start

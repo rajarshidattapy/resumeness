@@ -10,34 +10,27 @@ _cached_llm: BaseChatModel | None = None
 
 
 def get_llm() -> BaseChatModel:
-    """Return a configured LLM instance (cached singleton).
+    """Return a configured ChatOpenAI instance (cached singleton).
 
-    Uses Ollama by default. Set OPENAI_API_KEY env var to use OpenAI instead.
+    Requires OPENAI_API_KEY to be set in the environment.
     """
     global _cached_llm
     if _cached_llm is not None:
         return _cached_llm
 
     openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
-        from langchain_openai import ChatOpenAI
-
-        _cached_llm = ChatOpenAI(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            temperature=0.7,
-            api_key=openai_key,
+    if not openai_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. "
+            "Add it to backend/.env or export it as an environment variable."
         )
-    else:
-        try:
-            from langchain_ollama import ChatOllama
-        except ImportError:
-            from langchain_community.chat_models import ChatOllama
 
-        _cached_llm = ChatOllama(
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            model=os.getenv("OLLAMA_MODEL", "llama3"),
-            temperature=0.7,
-            num_ctx=4096,
-        )
+    from langchain_openai import ChatOpenAI
+
+    _cached_llm = ChatOpenAI(
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        temperature=0.7,
+        api_key=openai_key,
+    )
 
     return _cached_llm
