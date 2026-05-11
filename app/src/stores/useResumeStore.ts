@@ -333,7 +333,7 @@ export const useResumeStore = create<ResumeState>()(
         {
           id: '1',
           role: 'assistant',
-          content: "I'm your **autonomous resume optimization agent**. I follow a rigorous 6-step process to maximize ATS compatibility:\n\n🎯 **Planning** → 🔍 **Analysis** → 📚 **Retrieval** → ✍️ **Rewriting** → ⚡ **Optimization** → ✅ **Verification**\n\n**Just paste a job description and I'll:**\n• Extract key requirements and ATS keywords\n• Search your knowledge base for relevant experience\n• Rewrite your LaTeX with job-aligned language\n• Optimize for maximum ATS compatibility\n• Verify accuracy and quality\n• Present comprehensive results\n\n**Ready to transform your resume? Paste a job description below!**",
+          content: "Welcome to **Resumeness AI**! 👋\n\nPaste a job description below to get started. Use the quick actions above to load a sample JD, view your knowledge base, or check version history.",
           timestamp: new Date(),
         }
       ],

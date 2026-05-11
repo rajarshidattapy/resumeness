@@ -1,9 +1,0 @@
-OPENAI_API_KEY=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
-
-# Optional: local clone path for Overleaf project if you want server-side auto-sync.
-# Set this to the absolute path of a local git clone of your Overleaf project.
-# Example (Windows): C:\Users\you\projects\overleaf-project
-OVERLEAF_PATH='C:\overleaf-clones\my-resume'
-
-
-OVERLEAF_GIT_TOKEN=olp_5d0J7bs4Xz0y3wWZIwwL3hkAjSoYA71jkHIH
