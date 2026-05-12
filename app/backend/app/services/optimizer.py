@@ -13,17 +13,24 @@ OPTIMIZE_PROMPT = _PROMPT_PATH.read_text(encoding="utf-8") if _PROMPT_PATH.exist
 
 
 def _format_bullets(bullets: List[Dict[str, str]]) -> str:
+    """Number bullets 1..N so AI references them by index, avoiding text-matching issues."""
     lines = []
-    for b in bullets:
-        lines.append(f"[{b['section']}] {b['display']}")
-    return "\n".join(lines)
+    current_section = None
+    for i, b in enumerate(bullets):
+        if b["section"] != current_section:
+            current_section = b["section"]
+            lines.append(f"\n[{current_section}]")
+        lines.append(f"{i + 1}. {b['display']}")
+    return "\n".join(lines).strip()
 
 
 def _format_kb_items(items: List[Dict]) -> str:
     parts = []
     for item in items:
         tags = ", ".join(item.get("tags", []))
-        parts.append(f"• {item['title']} ({item['type']}): {item['content'][:200]} [tags: {tags}]")
+        parts.append(
+            f"• {item['title']} ({item['type']}): {item['content'][:200]} [tags: {tags}]"
+        )
     return "\n".join(parts) or "No knowledge base items provided."
 
 
@@ -46,6 +53,7 @@ async def optimize_resume(
     Returns:
         {
             "improvements": [...],
+            "patches": [...],
             "summary": str,
             "updatedLatex": str,
             "appliedCount": int,
@@ -57,12 +65,13 @@ async def optimize_resume(
             logger.warning("No bullets extracted from resume LaTeX")
             return {
                 "improvements": [],
+                "patches": [],
                 "summary": "Could not extract resume bullets for optimization.",
                 "updatedLatex": resume_latex,
                 "appliedCount": 0,
             }
 
-        bullets_text = _format_bullets(bullets[:30])  # cap to 30 bullets
+        bullets_text = _format_bullets(bullets[:30])
         kb_text = _format_kb_items(relevant_kb_items)
 
         prompt = OPTIMIZE_PROMPT.format(
@@ -74,7 +83,10 @@ async def optimize_resume(
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a professional resume optimizer. Return only valid JSON."},
+                {
+                    "role": "system",
+                    "content": "You are a professional resume optimizer. Return only valid JSON.",
+                },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.35,
@@ -88,41 +100,29 @@ async def optimize_resume(
         summary = result.get("summary", "Resume optimized for the target role.")
         logger.info(f"Optimizer returned {len(improvements)} improvements")
 
-        # Build patch list mapping display text → latex raw text
-        # We stored both in the bullet extraction; build a lookup by display prefix
-        display_to_raw = {b["display"]: b["raw"] for b in bullets}
-
         patches = []
         for imp in improvements:
-            original_display = imp.get("original", "")
-            improved_text = imp.get("improved", "")
+            # AI references bullets by 1-based index — exact, no text-matching needed
+            idx = imp.get("bulletIndex", 0)
+            if not isinstance(idx, int) or idx < 1 or idx > len(bullets):
+                logger.warning(f"Invalid bulletIndex {idx}, skipping")
+                continue
 
-            # Find best matching raw LaTeX bullet
-            raw_original = display_to_raw.get(original_display)
-            if not raw_original:
-                # Fuzzy: find the closest display key that contains the original
-                for disp, raw in display_to_raw.items():
-                    if original_display[:50] in disp or disp[:50] in original_display:
-                        raw_original = raw
-                        break
+            bullet = bullets[idx - 1]
+            improved_text = imp.get("improved", "").strip()
+            if not improved_text:
+                continue
 
-            if raw_original:
-                patches.append({
-                    "section": imp.get("section", ""),
-                    "old": raw_original,
-                    "new": improved_text,
-                    "reason": imp.get("reason", ""),
-                })
-            else:
-                # Fallback: try the display text directly (may work for simple LaTeX)
-                patches.append({
-                    "section": imp.get("section", ""),
-                    "old": original_display,
-                    "new": improved_text,
-                    "reason": imp.get("reason", ""),
-                })
+            patches.append({
+                "section": imp.get("section", bullet["section"]),
+                "old": bullet["raw"],
+                "new": improved_text,
+                "reason": imp.get("reason", ""),
+            })
 
         updated_latex, applied_count = apply_patches(resume_latex, patches)
+
+        logger.info(f"Applied {applied_count}/{len(patches)} patches")
 
         return {
             "improvements": improvements,
@@ -136,6 +136,7 @@ async def optimize_resume(
         logger.error(f"JSON decode error in optimizer: {e}")
         return {
             "improvements": [],
+            "patches": [],
             "summary": "Optimization failed: invalid AI response.",
             "updatedLatex": resume_latex,
             "appliedCount": 0,
@@ -144,6 +145,7 @@ async def optimize_resume(
         logger.error(f"Optimizer error: {e}")
         return {
             "improvements": [],
+            "patches": [],
             "summary": "Optimization failed. Please try again.",
             "updatedLatex": resume_latex,
             "appliedCount": 0,

@@ -44,18 +44,21 @@ def apply_patch(latex: str, old_text: str, new_text: str) -> tuple[str, bool]:
     if not old_text or not new_text or old_text == new_text:
         return latex, False
 
+    # Direct match (most common — raw bullet text is verbatim in LaTeX)
     if old_text in latex:
         return latex.replace(old_text, new_text, 1), True
 
-    # Normalize whitespace and retry
-    normalized_old = re.sub(r'\s+', ' ', old_text).strip()
-    normalized_latex = re.sub(r'\s+', ' ', latex)
-    if normalized_old in normalized_latex:
-        result = normalized_latex.replace(normalized_old, new_text, 1)
-        # Restore newlines roughly (best-effort)
-        return result, True
+    # Trailing-whitespace-stripped match (handles indentation capture)
+    stripped = old_text.rstrip()
+    if stripped and stripped in latex:
+        return latex.replace(stripped, new_text, 1), True
 
-    logger.warning(f"Patch target not found: {old_text[:60]}…")
+    # Normalised-whitespace fallback
+    normalized_old = re.sub(r'\s+', ' ', old_text).strip()
+    if normalized_old in latex:
+        return latex.replace(normalized_old, new_text, 1), True
+
+    logger.warning(f"Patch target not found: {old_text[:80]!r}")
     return latex, False
 
 

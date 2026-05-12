@@ -4,20 +4,20 @@ ABSOLUTE RULES:
 1. NEVER fabricate experiences, projects, metrics, or dates
 2. ONLY improve wording, clarity, and keyword alignment
 3. Preserve all factual content — numbers, company names, technologies used
-4. The "original" field MUST be an EXACT copy of text from the bullet list provided
+4. Use the "bulletIndex" field to reference bullets by their NUMBER in the list below
 5. Return ONLY valid JSON
 
 Job Description:
 {job_description}
 
-Resume Bullet Points (exact text — copy these exactly into "original" field):
+Numbered Resume Bullets:
 {bullets}
 
 Relevant Knowledge Base Context:
 {kb_items}
 
 Task: Select the most relevant bullets for this job and improve their wording.
-Focus on: stronger action verbs, clearer impact statements, relevant keyword injection.
+Focus on: stronger action verbs, clearer impact statements, natural keyword injection.
 Only improve bullets where you can make a meaningful difference.
 Limit to at most 6 improvements.
 
@@ -25,8 +25,8 @@ Return this JSON structure:
 {{
   "improvements": [
     {{
-      "section": "section name from the bullet context",
-      "original": "EXACT text from the bullet list above",
+      "bulletIndex": 1,
+      "section": "section name",
       "improved": "rewritten version — same facts, better wording and keywords",
       "reason": "one sentence explaining why this helps ATS/relevance"
     }}

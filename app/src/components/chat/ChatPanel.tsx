@@ -97,7 +97,6 @@ export const ChatPanel = () => {
     setJobDescription,
     setAtsScore,
     setMatchedKeywords,
-    setLatexContentWithTypewriter,
     addVersion,
   } = useResumeStore();
 
@@ -112,16 +111,22 @@ export const ChatPanel = () => {
     setInput('');
     addMessage({ role: 'user', content: userMessage });
 
-    // Treat the user message as the JD if no JD is set yet
-    const activeJD = jobDescription || userMessage;
-    if (!jobDescription) setJobDescription(userMessage);
+    // Only treat the message as a JD when it is substantial (>100 chars).
+    // Short edit commands ("change X to Y") must not overwrite the stored JD.
+    const isLikelyJD = userMessage.length > 100;
+    const activeJD = isLikelyJD ? userMessage : jobDescription;
+    if (isLikelyJD) setJobDescription(userMessage);
 
     setIsAgentThinking(true);
 
-    // Add placeholder assistant message and capture its ID
+    // Add placeholder assistant message and capture its ID immediately
     addMessage({ role: 'assistant', content: '' });
     const storeMessages = useResumeStore.getState().messages;
     const assistantMsgId = storeMessages[storeMessages.length - 1].id;
+
+    // Snapshot store values now (avoids stale-closure issues in the async body)
+    const snapshotLatex = useResumeStore.getState().latexContent;
+    const snapshotKB = useResumeStore.getState().knowledgeBase;
 
     try {
       const response = await fetch(`${API_URL}/api/chat`, {
@@ -132,9 +137,9 @@ export const ChatPanel = () => {
             role: m.role,
             content: m.content,
           })),
-          resumeLatex: latexContent,
+          resumeLatex: snapshotLatex,
           jobDescription: activeJD,
-          knowledgeBaseItems: knowledgeBase,
+          knowledgeBaseItems: snapshotKB,
         }),
       });
 
@@ -147,7 +152,7 @@ export const ChatPanel = () => {
       let accText = '';
       let buffer = '';
 
-      while (true) {
+      outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -177,27 +182,31 @@ export const ChatPanel = () => {
             setMatchedKeywords((event.matchedKeywords as string[]) ?? []);
           } else if (type === 'patches') {
             const updatedLatex = event.updatedLatex as string;
-            const summary = event.summary as string;
-            const scoreAfter = event.atsScoreAfter as number | undefined;
-            const matchedAfter = (event.matchedKeywordsAfter as string[]) ?? undefined;
+            if (updatedLatex) {
+              // Always compare against the live store value, not the stale closure
+              const currentLatex = useResumeStore.getState().latexContent;
+              if (updatedLatex !== currentLatex) {
+                // forceSetLatexContent dispatches directly to the CodeMirror EditorView,
+                // guaranteeing the editor updates even when rapid Zustand updates are batched.
+                useResumeStore.getState().forceSetLatexContent(updatedLatex);
 
-            if (updatedLatex && updatedLatex !== latexContent) {
-              await setLatexContentWithTypewriter(updatedLatex, 2);
-              addVersion({
-                latex: updatedLatex,
-                description: summary || 'AI Optimization',
-                atsScore: scoreAfter,
-              });
-              if (scoreAfter !== undefined) setAtsScore(scoreAfter);
-              if (matchedAfter) setMatchedKeywords(matchedAfter);
+                const summary = event.summary as string;
+                const scoreAfter = event.atsScoreAfter as number | undefined;
+                const matchedAfter = (event.matchedKeywordsAfter as string[]) ?? undefined;
+
+                addVersion({
+                  latex: updatedLatex,
+                  description: summary || 'AI Optimization',
+                  atsScore: scoreAfter,
+                });
+                if (scoreAfter !== undefined) setAtsScore(scoreAfter);
+                if (matchedAfter) setMatchedKeywords(matchedAfter);
+              }
             }
           } else if (type === 'done') {
-            break;
+            break outer;
           } else if (type === 'error') {
-            updateMessage(
-              assistantMsgId,
-              accText + '\n\n⚠️ ' + (event.content as string),
-            );
+            updateMessage(assistantMsgId, accText + '\n\n⚠️ ' + (event.content as string));
           }
         }
       }
@@ -205,8 +214,7 @@ export const ChatPanel = () => {
       console.error('Chat error:', err);
       updateMessage(
         assistantMsgId,
-        'Sorry, I could not reach the backend. Make sure the server is running at ' +
-          API_URL,
+        'Sorry, I could not reach the backend. Make sure the server is running at ' + API_URL,
       );
     } finally {
       setIsAgentThinking(false);

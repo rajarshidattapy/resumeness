@@ -23,17 +23,26 @@ export const LaTeXEditor = () => {
       setEditorViewRef(view);
     }
     return () => setEditorViewRef(null);
-  }, []); // only on mount/unmount
+  }, []);
 
-  // Track when content changes externally (e.g., from AI) vs from user typing
+  // Sync external latexContent changes → CodeMirror editor.
+  // This is the reliable path: the editorRef is guaranteed to be populated here,
+  // unlike the module-level _editorViewRef which may be null on first mount.
   useEffect(() => {
-    if (latexContent !== prevContentRef.current) {
-      prevContentRef.current = latexContent;
+    const view = editorRef.current?.view;
+    if (!view) return;
+    const currentDoc = view.state.doc.toString();
+    // Only dispatch when content genuinely differs to avoid triggering onChange loops
+    if (latexContent !== currentDoc) {
+      view.dispatch({
+        changes: { from: 0, to: currentDoc.length, insert: latexContent },
+      });
     }
   }, [latexContent]);
 
   const handleChange = useCallback((value: string) => {
-    prevContentRef.current = value; // Track that this change came from typing
+    // prevContentRef is kept for legacy forceSetLatexContent compatibility
+    prevContentRef.current = value;
     setLatexContent(value);
   }, [setLatexContent]);
 
