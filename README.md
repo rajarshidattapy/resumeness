@@ -2,7 +2,7 @@
 
 > **AI-powered resume optimization** — Transform your resume to match any job description. Paste a JD, get AI-driven suggestions, and compile a perfectly formatted LaTeX resume optimized for ATS systems.
 
-![Resumeness AI](app/public/image.png)
+![Resumeness AI](public/image.png)
 
 ## ✨ Features
 
