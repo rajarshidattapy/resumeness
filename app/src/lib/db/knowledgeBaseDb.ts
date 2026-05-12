@@ -1,13 +1,25 @@
 import { KnowledgeItem } from '@/stores/useResumeStore';
 
-const STORAGE_KEY = 'resumeness-knowledge-base';
+let _currentUserId = '';
+const getStorageKey = () =>
+  _currentUserId
+    ? `resumeness-kb-${_currentUserId}`
+    : 'resumeness-knowledge-base';
+
+/**
+ * Set the current user ID to scope all KB storage operations.
+ * Called by AuthSync when the Clerk user changes.
+ */
+export function setCurrentUserId(userId: string) {
+  _currentUserId = userId;
+}
 
 /**
  * Read all items from localStorage
  */
 function readStorage(): KnowledgeItem[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey());
     if (!raw) return [];
     return JSON.parse(raw) as KnowledgeItem[];
   } catch {
@@ -21,7 +33,7 @@ function readStorage(): KnowledgeItem[] {
  */
 function writeStorage(items: KnowledgeItem[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    localStorage.setItem(getStorageKey(), JSON.stringify(items));
   } catch (e) {
     console.error('Failed to write knowledge base to localStorage:', e);
   }

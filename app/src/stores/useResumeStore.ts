@@ -453,6 +453,10 @@ export const useResumeStore = create<ResumeState>()(
         // Don't persist knowledge base - it's now in the database
         latexContent: state.latexContent,
       }),
+      // Note: We use a fixed key here. User-scoped isolation is handled by
+      // the knowledgeBaseDb module (which uses per-user localStorage keys).
+      // Versions and latexContent use a single key; if full per-user isolation
+      // is needed for these too, wrap with a user-keyed approach.
     }
   )
 );

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { FileText, Database, HelpCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { UserButton } from '@clerk/react';
 import { ATSScore } from '@/components/sidebar/ATSScore';
 import { VersionHistory } from '@/components/sidebar/VersionHistory';
 import { Button } from '@/components/ui/button';
@@ -52,7 +53,14 @@ export const Sidebar = () => {
 
       {/* Footer */}
       <div className="p-4 border-t border-border/50">
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-between">
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: 'w-8 h-8',
+              },
+            }}
+          />
           <Button variant="ghost" size="iconSm">
             <HelpCircle className="w-4 h-4" />
           </Button>

@@ -6,6 +6,8 @@ import { useResumeStore, Message } from '@/stores/useResumeStore';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 const TypingIndicator = () => (
   <div className="flex items-center gap-1.5 px-4 py-3">
     <div className="typing-indicator flex gap-1">
@@ -83,8 +85,21 @@ export const ChatPanel = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const { messages, addMessage, isAgentThinking, setIsAgentThinking, knowledgeBase } =
-    useResumeStore();
+  const {
+    messages,
+    addMessage,
+    updateMessage,
+    isAgentThinking,
+    setIsAgentThinking,
+    knowledgeBase,
+    latexContent,
+    jobDescription,
+    setJobDescription,
+    setAtsScore,
+    setMatchedKeywords,
+    setLatexContentWithTypewriter,
+    addVersion,
+  } = useResumeStore();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -92,9 +107,110 @@ export const ChatPanel = () => {
 
   const handleSend = async () => {
     if (!input.trim() || isAgentThinking) return;
+
     const userMessage = input.trim();
     setInput('');
     addMessage({ role: 'user', content: userMessage });
+
+    // Treat the user message as the JD if no JD is set yet
+    const activeJD = jobDescription || userMessage;
+    if (!jobDescription) setJobDescription(userMessage);
+
+    setIsAgentThinking(true);
+
+    // Add placeholder assistant message and capture its ID
+    addMessage({ role: 'assistant', content: '' });
+    const storeMessages = useResumeStore.getState().messages;
+    const assistantMsgId = storeMessages[storeMessages.length - 1].id;
+
+    try {
+      const response = await fetch(`${API_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: storeMessages.slice(0, -1).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+          resumeLatex: latexContent,
+          jobDescription: activeJD,
+          knowledgeBaseItems: knowledgeBase,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Backend responded with ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accText = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          let event: Record<string, unknown>;
+          try {
+            event = JSON.parse(raw);
+          } catch {
+            continue;
+          }
+
+          const type = event.type as string;
+
+          if (type === 'text') {
+            accText += event.content as string;
+            updateMessage(assistantMsgId, accText);
+          } else if (type === 'ats') {
+            setAtsScore(event.score as number);
+            setMatchedKeywords((event.matchedKeywords as string[]) ?? []);
+          } else if (type === 'patches') {
+            const updatedLatex = event.updatedLatex as string;
+            const summary = event.summary as string;
+            const scoreAfter = event.atsScoreAfter as number | undefined;
+            const matchedAfter = (event.matchedKeywordsAfter as string[]) ?? undefined;
+
+            if (updatedLatex && updatedLatex !== latexContent) {
+              await setLatexContentWithTypewriter(updatedLatex, 2);
+              addVersion({
+                latex: updatedLatex,
+                description: summary || 'AI Optimization',
+                atsScore: scoreAfter,
+              });
+              if (scoreAfter !== undefined) setAtsScore(scoreAfter);
+              if (matchedAfter) setMatchedKeywords(matchedAfter);
+            }
+          } else if (type === 'done') {
+            break;
+          } else if (type === 'error') {
+            updateMessage(
+              assistantMsgId,
+              accText + '\n\n⚠️ ' + (event.content as string),
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Chat error:', err);
+      updateMessage(
+        assistantMsgId,
+        'Sorry, I could not reach the backend. Make sure the server is running at ' +
+          API_URL,
+      );
+    } finally {
+      setIsAgentThinking(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -135,7 +251,8 @@ Requirements:
       case 'view_history':
         addMessage({
           role: 'assistant',
-          content: 'Your version history is displayed in the sidebar. You can restore any previous version by clicking on it.',
+          content:
+            'Your version history is displayed in the sidebar. You can restore any previous version by clicking on it.',
         });
         break;
     }

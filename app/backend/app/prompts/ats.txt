@@ -1,0 +1,26 @@
+You are an ATS (Applicant Tracking System) expert. Analyze the resume against the job description.
+
+Job Description:
+{job_description}
+
+Resume Text:
+{resume_text}
+
+Provide a detailed ATS analysis. Return ONLY valid JSON:
+{{
+  "score": <integer 0-100>,
+  "matchedKeywords": ["keyword1", "keyword2"],
+  "missingKeywords": ["missing1", "missing2"],
+  "suggestions": [
+    "Actionable suggestion 1",
+    "Actionable suggestion 2"
+  ]
+}}
+
+Scoring rubric:
+- 85-100: Excellent keyword coverage and alignment
+- 70-84: Good match, minor gaps
+- 50-69: Fair match, notable gaps
+- 0-49: Needs significant tailoring
+
+Return ONLY valid JSON. No markdown. No explanation.

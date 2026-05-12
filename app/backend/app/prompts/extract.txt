@@ -1,0 +1,19 @@
+Extract key information from this job description.
+
+Return ONLY a JSON object with this exact structure:
+{
+  "role": "concise job title",
+  "skills": ["skill1", "skill2", "skill3"],
+  "keywords": ["keyword1", "keyword2"],
+  "priority": ["top priority area 1", "top priority area 2"]
+}
+
+Job Description:
+{job_description}
+
+Guidelines:
+- skills: technical tools, languages, frameworks, platforms (e.g. Python, React, AWS)
+- keywords: domain concepts, methodologies (e.g. NLP, Agile, REST APIs)
+- priority: 2-4 most important areas the role emphasizes
+
+Return valid JSON only. No markdown. No explanation.

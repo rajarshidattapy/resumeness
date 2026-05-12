@@ -23,3 +23,5 @@ dist-ssr
 *.sw?
 backend/.env
 dist/
+.claude/
+backend/venv/
