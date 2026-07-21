@@ -135,12 +135,6 @@ const LandingPage = () => {
       {/* ──────────── Hero ──────────── */}
       <section
         className="relative pt-24 pb-32 px-6"
-        style={{
-          backgroundImage: 'url(/bg.gi )',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-        }}
       >
         {/* Background effects */}
         <div className="absolute inset-0 -z-10">

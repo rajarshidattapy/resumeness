@@ -25,3 +25,4 @@ backend/.env
 dist/
 .claude/
 backend/venv/
+__pycache__/
