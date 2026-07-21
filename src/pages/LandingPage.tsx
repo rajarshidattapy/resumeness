@@ -135,12 +135,18 @@ const LandingPage = () => {
       {/* ──────────── Hero ──────────── */}
       <section
         className="relative pt-24 pb-32 px-6"
+        style={{
+          backgroundImage: 'url(/bg.gi )',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
       >
         {/* Background effects */}
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-primary/8 via-primary/3 to-transparent rounded-full blur-3xl" />
-          <div className="absolute top-40 left-20 w-72 h-72 bg-emerald-400/5 rounded-full blur-3xl" />
-          <div className="absolute top-60 right-20 w-96 h-96 bg-teal-400/5 rounded-full blur-3xl" />
+          <div className="absolute top-40 left-20 w-72 h-72 bg-foreground/5 rounded-full blur-3xl" />
+          <div className="absolute top-60 right-20 w-96 h-96 bg-foreground/[0.03] rounded-full blur-3xl" />
         </div>
 
         <div className="max-w-4xl mx-auto text-center">

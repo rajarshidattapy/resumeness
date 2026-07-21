@@ -39,14 +39,6 @@ export const MainLayout = ({ chatPanel, editorPanel }: MainLayoutProps) => {
           </Panel>
         </PanelGroup>
       </div>
-
-      {/* Background Glow Effect */}
-      <div
-        className="fixed inset-0 pointer-events-none -z-10"
-        style={{
-          background: 'radial-gradient(ellipse at 20% 20%, hsl(187 92% 50% / 0.03) 0%, transparent 50%), radial-gradient(ellipse at 80% 80%, hsl(187 92% 50% / 0.02) 0%, transparent 50%)',
-        }}
-      />
     </div>
   );
 };
