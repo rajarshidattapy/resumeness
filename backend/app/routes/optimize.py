@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
+from app.auth import get_current_user_id
 from app.models.resume import OptimizeRequest, OptimizeResponse, ResumePatch
 from app.services.extractor import extract_job_requirements
 from app.services.retriever import retrieve_relevant_kb_items
 from app.services.optimizer import optimize_resume
 from app.services.ats_analyzer import analyze_ats_score
+from app.services.gap_analysis import find_knowledge_gaps, GapItem
+from app.services.learning_path import suggest_learning_path, LearningPathResult
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/api/optimize", tags=["optimize"])
@@ -80,3 +83,36 @@ async def optimize(request: OptimizeRequest):
     except Exception as e:
         logger.error(f"Optimization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class GapsRequest(BaseModel):
+    jobDescription: str
+    knowledgeBaseItems: List[dict]
+
+
+class GapsResponse(BaseModel):
+    gaps: List[GapItem]
+
+
+@router.post("/gaps", response_model=GapsResponse)
+async def gaps(request: GapsRequest, _user_id: str = Depends(get_current_user_id)):
+    """JD requirements with no strong match anywhere in the user's knowledge base."""
+    try:
+        found = await find_knowledge_gaps(request.jobDescription, request.knowledgeBaseItems)
+        return GapsResponse(gaps=found)
+    except Exception as e:
+        logger.error(f"Gap analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class LearningPathRequest(BaseModel):
+    requirement: str
+
+
+@router.post("/learning-path", response_model=LearningPathResult)
+async def learning_path(request: LearningPathRequest, _user_id: str = Depends(get_current_user_id)):
+    """Curated (not searched) source suggestions for a gap requirement."""
+    result = await suggest_learning_path(request.requirement)
+    if not result:
+        raise HTTPException(status_code=500, detail="Could not generate a learning path")
+    return result

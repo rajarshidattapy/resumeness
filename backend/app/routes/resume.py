@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.auth import get_current_user_id, require_matching_user
 from app.db.mongo import get_db
 from app.utils.logger import logger
 
@@ -19,7 +20,8 @@ class SaveVersionRequest(BaseModel):
 
 
 @router.get("/{user_id}/versions")
-async def get_versions(user_id: str, limit: int = 20):
+async def get_versions(user_id: str, limit: int = 20, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     cursor = (
         db.resume_versions.find({"userId": user_id}, {"embedding": 0})
@@ -35,7 +37,8 @@ async def get_versions(user_id: str, limit: int = 20):
 
 
 @router.post("/{user_id}/versions")
-async def save_version(user_id: str, request: SaveVersionRequest):
+async def save_version(user_id: str, request: SaveVersionRequest, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     doc = {
         "id": str(uuid.uuid4()),
@@ -53,7 +56,8 @@ async def save_version(user_id: str, request: SaveVersionRequest):
 
 
 @router.delete("/{user_id}/versions/{version_id}")
-async def delete_version(user_id: str, version_id: str):
+async def delete_version(user_id: str, version_id: str, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     result = await db.resume_versions.delete_one({"id": version_id, "userId": user_id})
     if result.deleted_count == 0:

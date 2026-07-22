@@ -1,9 +1,10 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.auth import get_current_user_id, require_matching_user
 from app.db.mongo import get_db
 from app.services.embedding_service import get_embedding
 from app.utils.logger import logger
@@ -32,14 +33,16 @@ def _doc_out(doc: dict) -> dict:
 
 
 @router.get("/{user_id}")
-async def list_kb_items(user_id: str):
+async def list_kb_items(user_id: str, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     items = await db.knowledge_base.find({"userId": user_id}).to_list(None)
     return [_doc_out(i) for i in items]
 
 
 @router.post("/{user_id}")
-async def create_kb_item(user_id: str, item: CreateKBItem):
+async def create_kb_item(user_id: str, item: CreateKBItem, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     item_text = f"{item.title} {item.content} {' '.join(item.tags)}"
     embedding = await get_embedding(item_text)
@@ -60,7 +63,8 @@ async def create_kb_item(user_id: str, item: CreateKBItem):
 
 
 @router.put("/{user_id}/{item_id}")
-async def update_kb_item(user_id: str, item_id: str, updates: UpdateKBItem):
+async def update_kb_item(user_id: str, item_id: str, updates: UpdateKBItem, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     existing = await db.knowledge_base.find_one({"id": item_id, "userId": user_id})
     if not existing:
@@ -78,7 +82,8 @@ async def update_kb_item(user_id: str, item_id: str, updates: UpdateKBItem):
 
 
 @router.delete("/{user_id}/{item_id}")
-async def delete_kb_item(user_id: str, item_id: str):
+async def delete_kb_item(user_id: str, item_id: str, caller_id: str = Depends(get_current_user_id)):
+    require_matching_user(user_id, caller_id)
     db = get_db()
     result = await db.knowledge_base.delete_one({"id": item_id, "userId": user_id})
     if result.deleted_count == 0:
@@ -88,8 +93,9 @@ async def delete_kb_item(user_id: str, item_id: str):
 
 
 @router.post("/{user_id}/sync")
-async def sync_kb_items(user_id: str, items: List[dict]):
+async def sync_kb_items(user_id: str, items: List[dict], caller_id: str = Depends(get_current_user_id)):
     """Bulk sync KB items from the frontend localStorage to MongoDB."""
+    require_matching_user(user_id, caller_id)
     db = get_db()
     upserted = 0
     for item in items:

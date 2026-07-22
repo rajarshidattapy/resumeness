@@ -1,12 +1,16 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import {
   getAllKnowledgeItems,
   createKnowledgeItem as createKBItem,
   updateKnowledgeItem as updateKBItem,
   deleteKnowledgeItem as deleteKBItem,
   seedKnowledgeBase,
+  getCurrentUserId,
 } from '@/lib/db/knowledgeBaseDb';
+import { fetchKbItems, createKbItem, updateKbItem, deleteKbItem, syncKbItems } from '@/lib/api/kb';
+import { fetchVersions, saveVersionRemote } from '@/lib/api/versions';
+import type { GapItem } from '@/lib/api/gaps';
 
 // Fallback for crypto.randomUUID() in non-secure contexts (e.g., HTTP on LAN)
 const generateUUID = (): string => {
@@ -64,11 +68,12 @@ interface ResumeState {
   jobDescription: string;
   setJobDescription: (jd: string) => void;
   
-  // Version history (persisted)
+  // Version history (persisted locally, mirrored to backend when available)
   versions: ResumeVersion[];
   addVersion: (version: Omit<ResumeVersion, 'id' | 'timestamp'>) => void;
   restoreVersion: (id: string) => void;
   deleteVersion: (id: string) => void;
+  loadVersions: () => Promise<void>;
   
   // Knowledge base
   knowledgeBase: KnowledgeItem[];
@@ -90,6 +95,10 @@ interface ResumeState {
   setAtsScore: (score: number | null) => void;
   matchedKeywords: string[];
   setMatchedKeywords: (keywords: string[]) => void;
+
+  // Knowledge gaps — JD requirements with no strong KB match
+  knowledgeGaps: GapItem[];
+  setKnowledgeGaps: (gaps: GapItem[]) => void;
 }
 
 const DEFAULT_LATEX = `\\documentclass[11pt,a4paper]{article}
@@ -355,13 +364,24 @@ export const useResumeStore = create<ResumeState>()(
       setJobDescription: (jd) => set({ jobDescription: jd }),
       
       versions: [],
-      addVersion: (version) => set((state) => ({
-        versions: [{
-          ...version,
-          id: generateUUID(),
-          timestamp: new Date(),
-        }, ...state.versions]
-      })),
+      addVersion: (version) => {
+        set((state) => ({
+          versions: [{
+            ...version,
+            id: generateUUID(),
+            timestamp: new Date(),
+          }, ...state.versions]
+        }));
+
+        // Mirror to backend, best-effort — local state is already updated so
+        // this never blocks the UI; failures just mean no cross-device copy yet.
+        const userId = getCurrentUserId();
+        if (userId) {
+          saveVersionRemote(userId, version).catch((error) => {
+            console.warn('Failed to sync version to backend:', error);
+          });
+        }
+      },
       restoreVersion: (id) => {
         const version = get().versions.find(v => v.id === id);
         if (version) {
@@ -371,30 +391,58 @@ export const useResumeStore = create<ResumeState>()(
       deleteVersion: (id) => set((state) => ({
         versions: state.versions.filter(v => v.id !== id)
       })),
+      loadVersions: async () => {
+        const userId = getCurrentUserId();
+        if (!userId) return;
+        try {
+          const remoteVersions = await fetchVersions(userId);
+          if (remoteVersions.length > 0) {
+            set({ versions: remoteVersions });
+          }
+        } catch (error) {
+          console.warn('Failed to load versions from backend, using local cache:', error);
+        }
+      },
       
       knowledgeBase: DEFAULT_KNOWLEDGE, // Initialize with default knowledge
       knowledgeBaseLoading: false,
       knowledgeBaseError: null,
       loadKnowledgeBase: async () => {
         set({ knowledgeBaseLoading: true, knowledgeBaseError: null });
+
+        // Always seed/read the local cache first so the app works offline
+        // and without a backend/Mongo connection.
+        await seedKnowledgeBase(DEFAULT_KNOWLEDGE);
+        const localItems = await getAllKnowledgeItems();
+
+        const userId = getCurrentUserId();
+        if (!userId) {
+          set({ knowledgeBase: localItems, knowledgeBaseLoading: false });
+          return;
+        }
+
         try {
-          // Seed default items if the localStorage KB is empty (first run)
-          await seedKnowledgeBase(DEFAULT_KNOWLEDGE);
-          const items = await getAllKnowledgeItems();
-          set({ knowledgeBase: items, knowledgeBaseLoading: false });
+          let remoteItems = await fetchKbItems(userId);
+          if (remoteItems.length === 0 && localItems.length > 0) {
+            // First login with existing local data — migrate it up once.
+            await syncKbItems(userId, localItems);
+            remoteItems = await fetchKbItems(userId);
+          }
+          set({ knowledgeBase: remoteItems, knowledgeBaseLoading: false });
         } catch (error) {
-          console.error('Error loading knowledge base:', error);
-          set({
-            knowledgeBaseError: error instanceof Error ? error.message : 'Failed to load knowledge base',
-            knowledgeBaseLoading: false,
-            knowledgeBase: DEFAULT_KNOWLEDGE,
-          });
+          console.warn('Backend KB unreachable, using local cache:', error);
+          set({ knowledgeBase: localItems, knowledgeBaseLoading: false });
         }
       },
       addKnowledgeItem: async (item) => {
         set({ knowledgeBaseError: null });
+        const userId = getCurrentUserId();
         try {
-          const newItem = await createKBItem(item);
+          // When signed in, the backend is authoritative and localStorage is
+          // just a snapshot refreshed wholesale by loadKnowledgeBase() — we
+          // don't mirror individual writes locally to avoid the two copies
+          // getting different generated ids.
+          const newItem = userId ? await createKbItem(userId, item) : await createKBItem(item);
           set((state) => ({
             knowledgeBase: [...state.knowledgeBase, newItem]
           }));
@@ -407,8 +455,11 @@ export const useResumeStore = create<ResumeState>()(
       },
       updateKnowledgeItem: async (id, updates) => {
         set({ knowledgeBaseError: null });
+        const userId = getCurrentUserId();
         try {
-          const updatedItem = await updateKBItem(id, updates);
+          const updatedItem = userId
+            ? await updateKbItem(userId, id, updates)
+            : await updateKBItem(id, updates);
           set((state) => ({
             knowledgeBase: state.knowledgeBase.map(item =>
               item.id === id ? updatedItem : item
@@ -423,8 +474,13 @@ export const useResumeStore = create<ResumeState>()(
       },
       removeKnowledgeItem: async (id) => {
         set({ knowledgeBaseError: null });
+        const userId = getCurrentUserId();
         try {
-          await deleteKBItem(id);
+          if (userId) {
+            await deleteKbItem(userId, id);
+          } else {
+            await deleteKBItem(id);
+          }
           set((state) => ({
             knowledgeBase: state.knowledgeBase.filter(item => item.id !== id)
           }));
@@ -445,6 +501,9 @@ export const useResumeStore = create<ResumeState>()(
       setAtsScore: (score) => set({ atsScore: score }),
       matchedKeywords: [],
       setMatchedKeywords: (keywords) => set({ matchedKeywords: keywords }),
+
+      knowledgeGaps: [],
+      setKnowledgeGaps: (gaps) => set({ knowledgeGaps: gaps }),
     }),
     {
       name: 'resumeness-storage',
@@ -453,10 +512,24 @@ export const useResumeStore = create<ResumeState>()(
         // Don't persist knowledge base - it's now in the database
         latexContent: state.latexContent,
       }),
-      // Note: We use a fixed key here. User-scoped isolation is handled by
-      // the knowledgeBaseDb module (which uses per-user localStorage keys).
-      // Versions and latexContent use a single key; if full per-user isolation
-      // is needed for these too, wrap with a user-keyed approach.
+      // User-scoped storage: prefixes the localStorage key with the current
+      // Clerk user id (same pattern as knowledgeBaseDb.ts's getStorageKey),
+      // so résumé content/versions don't leak across users on a shared
+      // browser profile. Falls back to the bare name when signed out.
+      storage: createJSONStorage(() => ({
+        getItem: (name) => {
+          const userId = getCurrentUserId();
+          return localStorage.getItem(userId ? `${name}-${userId}` : name);
+        },
+        setItem: (name, value) => {
+          const userId = getCurrentUserId();
+          localStorage.setItem(userId ? `${name}-${userId}` : name, value);
+        },
+        removeItem: (name) => {
+          const userId = getCurrentUserId();
+          localStorage.removeItem(userId ? `${name}-${userId}` : name);
+        },
+      })),
     }
   )
 );

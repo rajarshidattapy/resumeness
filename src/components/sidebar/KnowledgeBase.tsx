@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Database, Plus, Briefcase, Award, Code, Trash2, ChevronDown } from 'lucide-react';
+import { Database, Plus, Briefcase, Award, Code, Trash2, ChevronDown, GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useResumeStore, KnowledgeItem } from '@/stores/useResumeStore';
+import { getCurrentUserId } from '@/lib/db/knowledgeBaseDb';
+import { QuizDialog } from '@/components/knowledge/QuizDialog';
 import { cn } from '@/lib/utils';
 
 const typeIcons = {
@@ -21,6 +23,8 @@ const typeColors = {
 
 const KBItem = ({ item, onRemove }: { item: KnowledgeItem; onRemove: () => void }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isQuizOpen, setIsQuizOpen] = useState(false);
+  const userId = getCurrentUserId();
   const Icon = typeIcons[item.type];
 
   return (
@@ -71,22 +75,47 @@ const KBItem = ({ item, onRemove }: { item: KnowledgeItem; onRemove: () => void 
                     </span>
                   ))}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="iconSm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemove();
-                  }}
-                  className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                  {userId && (
+                    <Button
+                      variant="ghost"
+                      size="iconSm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsQuizOpen(true);
+                      }}
+                      title="Take quiz"
+                    >
+                      <GraduationCap className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="iconSm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemove();
+                    }}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {userId && (
+        <QuizDialog
+          userId={userId}
+          itemId={item.id}
+          itemTitle={item.title}
+          open={isQuizOpen}
+          onOpenChange={setIsQuizOpen}
+        />
+      )}
     </motion.div>
   );
 };

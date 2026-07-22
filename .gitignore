@@ -25,10 +25,8 @@ backend/.env
 dist/
 .claude/
 backend/venv/
-__pycache__/
-# Project Specific Files
 
-**/*.pyc
+# Project Specific Files
 resume/*.pdf
 run/*.pdf
 test_*.py
@@ -39,6 +37,7 @@ greenhouse_resumes/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
+*.pyc
 *$py.class
 
 # C extensions

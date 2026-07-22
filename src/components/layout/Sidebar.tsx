@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { UserButton } from '@clerk/react';
 import { ATSScore } from '@/components/sidebar/ATSScore';
 import { VersionHistory } from '@/components/sidebar/VersionHistory';
+import { LearningGaps } from '@/components/sidebar/LearningGaps';
+import { PlatformScore } from '@/components/sidebar/PlatformScore';
 import { Button } from '@/components/ui/button';
 import { useResumeStore } from '@/stores/useResumeStore';
 
@@ -31,6 +33,7 @@ export const Sidebar = () => {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <PlatformScore />
         <ATSScore />
         
         {/* Knowledge Base Link */}
@@ -49,6 +52,7 @@ export const Sidebar = () => {
         </Link>
 
         <VersionHistory />
+        <LearningGaps />
       </div>
 
       {/* Footer */}

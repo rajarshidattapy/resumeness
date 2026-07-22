@@ -15,6 +15,14 @@ export function setCurrentUserId(userId: string) {
 }
 
 /**
+ * Read the current user ID. Used by other modules (API client, Zustand
+ * persist storage) that need to scope requests/keys the same way.
+ */
+export function getCurrentUserId(): string {
+  return _currentUserId;
+}
+
+/**
  * Read all items from localStorage
  */
 function readStorage(): KnowledgeItem[] {

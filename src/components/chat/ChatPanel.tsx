@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Sparkles, FileText, Database, History, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useResumeStore, Message } from '@/stores/useResumeStore';
+import { fetchKnowledgeGaps } from '@/lib/api/gaps';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 
@@ -97,6 +98,7 @@ export const ChatPanel = () => {
     setJobDescription,
     setAtsScore,
     setMatchedKeywords,
+    setKnowledgeGaps,
     addVersion,
   } = useResumeStore();
 
@@ -115,7 +117,14 @@ export const ChatPanel = () => {
     // Short edit commands ("change X to Y") must not overwrite the stored JD.
     const isLikelyJD = userMessage.length > 100;
     const activeJD = isLikelyJD ? userMessage : jobDescription;
-    if (isLikelyJD) setJobDescription(userMessage);
+    if (isLikelyJD) {
+      setJobDescription(userMessage);
+      // Fire-and-forget — surfaces unmatched requirements in the sidebar
+      // Learning Gaps panel without blocking the chat response.
+      fetchKnowledgeGaps(userMessage, useResumeStore.getState().knowledgeBase)
+        .then(setKnowledgeGaps)
+        .catch((error) => console.warn('Gap analysis failed:', error));
+    }
 
     setIsAgentThinking(true);
 

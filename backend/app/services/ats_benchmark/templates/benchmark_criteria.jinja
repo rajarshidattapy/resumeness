@@ -1,0 +1,32 @@
+Job Description:
+{{ job_description }}
+
+Résumé (plain text, extracted from LaTeX):
+{{ resume_text }}
+
+Score the résumé against this job description in four categories:
+
+1. skills_alignment (max 30) — how well the résumé's stated skills cover the job's required/preferred skills.
+2. experience_relevance (max 30) — how relevant the candidate's work experience is to this specific role.
+3. project_relevance (max 25) — how relevant listed projects are to the role's domain and tech stack.
+4. ats_readability (max 15) — whether the résumé uses clear section headers, standard terminology, and job-relevant keywords in a way an automated screener would pick up (not a formatting/design judgment — you only see extracted text).
+
+For each category return {"score": <number, 0..max>, "max": <max>, "evidence": "<specific quote/paraphrase from the résumé>"}.
+
+Also return:
+- "key_strengths": 1-5 short bullet strings — the strongest genuine matches to this JD.
+- "areas_for_improvement": 1-5 short bullet strings — concrete, honest suggestions for better presenting *existing* experience toward this JD (never suggestions to add experience that doesn't exist).
+- "overall": integer 0-100, the sum of the four category scores scaled/rounded to a 0-100 scale (i.e. sum of scores / 100 total possible * 100, rounded).
+
+Return this exact JSON structure:
+{
+  "skills_alignment": {"score": 0, "max": 30, "evidence": ""},
+  "experience_relevance": {"score": 0, "max": 30, "evidence": ""},
+  "project_relevance": {"score": 0, "max": 25, "evidence": ""},
+  "ats_readability": {"score": 0, "max": 15, "evidence": ""},
+  "key_strengths": [],
+  "areas_for_improvement": [],
+  "overall": 0
+}
+
+Return ONLY valid JSON. No markdown code blocks. No explanation outside the JSON.

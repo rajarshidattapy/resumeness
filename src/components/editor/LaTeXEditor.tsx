@@ -210,6 +210,8 @@ export const LaTeXEditor = () => {
 };
 
 // PDF preview component
+const PREVIEW_DEBOUNCE_MS = 800;
+
 const ResumePreview = ({ latex }: { latex: string }) => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -217,12 +219,13 @@ const ResumePreview = ({ latex }: { latex: string }) => {
   const pdfUrlRef = useRef<string | null>(null);
   const { toast } = useToast();
 
-  // Compile LaTeX to PDF when latex content changes
+  // Compile LaTeX to PDF when latex content changes, debounced so rapid AI
+  // patches / edits don't each trigger a round-trip to the compile API.
   useEffect(() => {
     let isCancelled = false;
-    
-    const compileToPdf = async () => {
-      setIsLoading(true);
+    setIsLoading(true);
+
+    const timeoutId = setTimeout(async () => {
       setError(null);
 
       try {
@@ -252,12 +255,11 @@ const ResumePreview = ({ latex }: { latex: string }) => {
           setIsLoading(false);
         }
       }
-    };
-
-    compileToPdf();
+    }, PREVIEW_DEBOUNCE_MS);
 
     return () => {
       isCancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [latex]);
 

@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { 
-  Database, Plus, Briefcase, Award, Code, Trash2, ChevronDown, 
-  ArrowLeft, Search, Edit2, Save, X, Tag 
+import {
+  Database, Plus, Briefcase, Award, Code, Trash2, ChevronDown,
+  ArrowLeft, Search, Edit2, Save, X, Tag, GraduationCap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useResumeStore, KnowledgeItem } from '@/stores/useResumeStore';
+import { getCurrentUserId } from '@/lib/db/knowledgeBaseDb';
+import { QuizDialog } from '@/components/knowledge/QuizDialog';
 import { cn } from '@/lib/utils';
 
 const typeIcons = {
@@ -32,6 +34,8 @@ interface KBItemCardProps {
 
 const KBItemCard = ({ item, onEdit, onRemove }: KBItemCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isQuizOpen, setIsQuizOpen] = useState(false);
+  const userId = getCurrentUserId();
   const Icon = typeIcons[item.type];
 
   return (
@@ -83,6 +87,19 @@ const KBItemCard = ({ item, onEdit, onRemove }: KBItemCardProps) => {
                   ))}
                 </div>
                 <div className="flex gap-2">
+                  {userId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsQuizOpen(true);
+                      }}
+                    >
+                      <GraduationCap className="w-3.5 h-3.5 mr-1" />
+                      Quiz
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -111,6 +128,16 @@ const KBItemCard = ({ item, onEdit, onRemove }: KBItemCardProps) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {userId && (
+        <QuizDialog
+          userId={userId}
+          itemId={item.id}
+          itemTitle={item.title}
+          open={isQuizOpen}
+          onOpenChange={setIsQuizOpen}
+        />
+      )}
     </motion.div>
   );
 };
